@@ -10,11 +10,18 @@ Open this folder as a project in **Godot 4.3 or newer** and run `scenes/main/mai
 
 ## Browser preview (the actual Godot game)
 
-This is a **Godot WebGL export**, not a separate JavaScript recreation. Godot exports the same project and main scene to HTML, JavaScript, WebAssembly, and game data; the Python helper serves those generated files over HTTP.
+This is a **Godot WebGL export**, not a separate JavaScript recreation. Godot's Web exporter creates `index.html`, JavaScript, WebAssembly, and packed project data from this same project. Python does **not** convert or import Godot assets; `http.server` only serves the files that Godot has already exported.
 
 1. Install **Godot 4.3+** and the matching Web export templates.
-2. From this folder run `python3 scripts/preview_web.py` (or pass `--godot /path/to/godot`; `GODOT_BIN` is also supported).
+2. From this folder run `python3 scripts/preview_web.py` (or pass `--godot /path/to/godot`; `GODOT_BIN` is also supported). The script runs Godot headlessly to export, then starts Python's standard `http.server`.
 3. Open `http://localhost:8000` in a WebGL 2-capable browser. Use `--port 8080` to change the port.
+
+The two operations can also be run separately:
+
+```sh
+godot --headless --path . --export-debug Web build/web/index.html
+python3 -m http.server 8000 --bind 0.0.0.0 --directory build/web
+```
 
 The committed `Web` preset writes generated files to `build/web/` (ignored by Git). `scripts/preview_web.py --serve-only` serves an existing export without rebuilding it. The project keeps its Mobile renderer for the native game and selects Godot's Compatibility renderer for the Web platform, which is required for WebGL. Web export/runtime verification still requires a local Godot installation with matching templates.
 

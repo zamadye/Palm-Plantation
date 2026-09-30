@@ -1,0 +1,57 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/camera/strategy_camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/simulation/plantation_simulation.gd" id="3_sim"]
+[ext_resource type="Script" path="res://scripts/world/world_builder.gd" id="4_world"]
+[ext_resource type="Script" path="res://scripts/ui/game_ui.gd" id="5_ui"]
+
+[sub_resource type="Environment" id="Environment_daylight"]
+background_mode = 1
+background_color = Color(0.44, 0.58, 0.59, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.75, 0.79, 0.68, 1)
+ambient_light_energy = 0.62
+reflected_light_source = 1
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.55, 0.64, 0.58, 1)
+fog_density = 0.0018
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_daylight")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-48, -35, 0)
+light_color = Color(1, 0.94, 0.81, 1)
+light_energy = 1.6
+shadow_enabled = true
+shadow_bias = 0.04
+shadow_normal_bias = 0.7
+
+[node name="FillLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-30, 135, 0)
+light_color = Color(0.58, 0.71, 0.78, 1)
+light_energy = 0.28
+shadow_enabled = false
+
+[node name="PlantationWorld" type="Node3D" parent="."]
+script = ExtResource("4_world")
+
+[node name="Actors" type="Node3D" parent="."]
+
+[node name="PlantationSimulation" type="Node" parent="."]
+script = ExtResource("3_sim")
+
+[node name="StrategyCamera" type="Camera3D" parent="."]
+current = true
+fov = 38.0
+near = 0.1
+far = 180.0
+script = ExtResource("2_camera")
+
+[node name="GameUI" type="CanvasLayer" parent="."]
+script = ExtResource("5_ui")

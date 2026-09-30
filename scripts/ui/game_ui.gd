@@ -1,0 +1,765 @@
+extends CanvasLayer
+class_name PlantationGameUI
+
+## Mobile-first strategy HUD. UI sends intent to Main; simulation never owns UI nodes.
+signal action_selected(action: String)
+signal speed_selected(speed: float)
+signal maintenance_requested(action: String, palm_id: String)
+signal selection_closed
+
+var simulation
+var main_controller
+var screen: Control
+var action_buttons: Dictionary = {}
+var resource_labels: Dictionary = {}
+var speed_buttons: Dictionary = {}
+var objective_title: Label
+var objective_hint: Label
+var objective_progress: Label
+var objective_bar: ProgressBar
+var day_label: Label
+var speed_label: Label
+var details_panel: PanelContainer
+var details_content: VBoxContainer
+var details_title: Label
+var toast_panel: PanelContainer
+var toast_label: Label
+var _toast_tween: Tween
+enum LandState { FOREST, CLEARING, CLEARED, PREPARING, PREPARED }
+
+var active_action: String = ""
+var selected_kind: String = ""
+var selected_id: String = ""
+var _last_detail_signature: String = ""
+var _toast_serial: int = 0
+var _time_since_hud_refresh: float = 0.0
+
+
+func _ready() -> void:
+	layer = 10
+	_build_ui()
+
+
+func setup(state, controller) -> void:
+	simulation = state
+	main_controller = controller
+	if not simulation.toast.is_connected(show_toast):
+		simulation.toast.connect(show_toast)
+	if not simulation.phase_changed.is_connected(_on_state_changed):
+		simulation.phase_changed.connect(_on_state_changed)
+	if not simulation.land_changed.is_connected(_on_state_changed):
+		simulation.land_changed.connect(_on_state_changed)
+	if not simulation.job_changed.is_connected(_on_state_changed):
+		simulation.job_changed.connect(_on_state_changed)
+	_refresh_hud()
+
+
+func _process(delta: float) -> void:
+	if simulation == null:
+		return
+	_time_since_hud_refresh += delta
+	if _time_since_hud_refresh >= 0.12:
+		_time_since_hud_refresh = 0.0
+		_refresh_hud()
+		if selected_kind == "worker":
+			_update_worker_detail_values()
+		elif selected_kind == "palm":
+			var palm = simulation.get_palm(selected_id)
+			if palm != null:
+				_render_palm_details(palm)
+
+
+func _build_ui() -> void:
+	screen = Control.new()
+	screen.name = "HUD"
+	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(screen)
+	_build_status_card()
+	_build_resources_card()
+	_build_time_controls()
+	_build_objective_card()
+	_build_action_bar()
+	_build_details_panel()
+	_build_toast()
+	get_viewport().size_changed.connect(_update_responsive_layout)
+	_update_responsive_layout()
+
+
+func _build_status_card() -> void:
+	var panel := _make_panel("StatusCard", 0.0, 0.0, 0.0, 0.0, 18, 16, 248, 81)
+	panel.custom_minimum_size = Vector2(230, 65)
+	var margin := _add_margin(panel, 12, 9, 12, 9)
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 3)
+	margin.add_child(rows)
+	var eyebrow := _label("PALM ESTATE   /   PROTOTYPE 0.1", 9, Color(0.69, 0.76, 0.63), true)
+	rows.add_child(eyebrow)
+	var title := _label("Kampung Baru", 19, Color(0.94, 0.93, 0.84), true)
+	rows.add_child(title)
+
+
+func _build_resources_card() -> void:
+	var panel := _make_panel("Resources", 0.5, 0.0, 0.5, 0.0, -225, 16, 225, 81)
+	var margin := _add_margin(panel, 11, 7, 11, 7)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 17)
+	margin.add_child(row)
+	var entries := [
+		["money", "FUNDS", "$"],
+		["wood", "TIMBER", ""],
+		["seedlings", "SEEDLINGS", ""],
+		["fertilizer", "FERTILIZER", ""],
+		["pesticide", "TREATMENT", ""]
+	]
+	for entry in entries:
+		var column := VBoxContainer.new()
+		column.add_theme_constant_override("separation", 1)
+		var amount := _label("—", 14, Color(0.93, 0.91, 0.80), true)
+		amount.name = "Amount_%s" % entry[0]
+		resource_labels[entry[0]] = amount
+		var caption := _label(entry[1], 8, Color(0.63, 0.70, 0.60), true)
+		column.add_child(amount)
+		column.add_child(caption)
+		row.add_child(column)
+
+
+func _build_time_controls() -> void:
+	var panel := _make_panel("TimeAndSpeed", 1.0, 0.0, 1.0, 0.0, -290, 16, -18, 81)
+	var margin := _add_margin(panel, 11, 7, 11, 7)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	margin.add_child(row)
+	var clock := VBoxContainer.new()
+	clock.add_theme_constant_override("separation", 1)
+	day_label = _label("DAY 01", 13, Color(0.94, 0.92, 0.82), true)
+	speed_label = _label("GAME TIME", 8, Color(0.63, 0.70, 0.60), true)
+	clock.add_child(day_label)
+	clock.add_child(speed_label)
+	row.add_child(clock)
+	var separator := ColorRect.new()
+	separator.color = Color(0.8, 0.82, 0.7, 0.15)
+	separator.custom_minimum_size = Vector2(1, 35)
+	row.add_child(separator)
+	var speeds := HBoxContainer.new()
+	speeds.add_theme_constant_override("separation", 3)
+	for speed in [1.0, 2.0, 4.0, 6.0]:
+		var button := Button.new()
+		button.text = "%dx" % int(speed)
+		button.custom_minimum_size = Vector2(39, 34)
+		button.toggle_mode = true
+		button.focus_mode = Control.FOCUS_NONE
+		_style_button(button, true)
+		button.pressed.connect(_on_speed_pressed.bind(speed))
+		speed_buttons[speed] = button
+		speeds.add_child(button)
+	row.add_child(speeds)
+
+
+func _build_objective_card() -> void:
+	var panel := _make_panel("Objective", 0.0, 1.0, 0.0, 1.0, 18, -208, 322, -112)
+	var margin := _add_margin(panel, 15, 11, 15, 11)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 5)
+	margin.add_child(column)
+	objective_title = _label("01  ·  ESTABLISH A BASE", 11, Color(0.78, 0.78, 0.58), true)
+	objective_hint = _label(
+		"Choose a shelter site in the camp clearing.", 12, Color(0.89, 0.90, 0.82)
+	)
+	objective_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	objective_progress = _label("WAITING FOR A BUILD SITE", 9, Color(0.66, 0.72, 0.62), true)
+	objective_bar = ProgressBar.new()
+	objective_bar.custom_minimum_size = Vector2(0, 6)
+	objective_bar.max_value = 100.0
+	objective_bar.show_percentage = false
+	objective_bar.add_theme_stylebox_override("background", _progress_background())
+	objective_bar.add_theme_stylebox_override("fill", _progress_fill())
+	column.add_child(objective_title)
+	column.add_child(objective_hint)
+	column.add_child(objective_progress)
+	column.add_child(objective_bar)
+
+
+func _build_action_bar() -> void:
+	var panel := _make_panel("ActionBar", 0.5, 1.0, 0.5, 1.0, -251, -95, 251, -14)
+	var margin := _add_margin(panel, 9, 8, 9, 8)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(row)
+	var actions := [
+		["BUILD", "⌂"], ["LAND", "▧"], ["PLANT", "♧"], ["WORKERS", "◎"], ["MANAGEMENT", "▤"]
+	]
+	for item in actions:
+		var action: String = item[0]
+		var button := Button.new()
+		button.name = "Action_%s" % action
+		button.custom_minimum_size = Vector2(82, 58)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.toggle_mode = true
+		button.focus_mode = Control.FOCUS_NONE
+		button.text = "%s\n%s" % [item[1], action]
+		button.add_theme_font_size_override("font_size", 10)
+		_style_button(button, false)
+		button.pressed.connect(_on_action_pressed.bind(action))
+		action_buttons[action] = button
+		row.add_child(button)
+
+
+func _build_details_panel() -> void:
+	details_panel = _make_panel("DetailsPanel", 1.0, 0.5, 1.0, 0.5, -300, -122, -18, 142)
+	details_panel.custom_minimum_size = Vector2(270, 264)
+	details_panel.visible = false
+	var margin := _add_margin(details_panel, 15, 12, 15, 13)
+	details_content = VBoxContainer.new()
+	details_content.add_theme_constant_override("separation", 8)
+	margin.add_child(details_content)
+	var header := HBoxContainer.new()
+	details_title = _label("INSPECT", 14, Color(0.94, 0.93, 0.84), true)
+	details_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var close := Button.new()
+	close.text = "×"
+	close.custom_minimum_size = Vector2(30, 28)
+	close.focus_mode = Control.FOCUS_NONE
+	_style_button(close, true)
+	close.pressed.connect(close_details)
+	header.add_child(details_title)
+	header.add_child(close)
+	details_content.add_child(header)
+	var divider := ColorRect.new()
+	divider.color = Color(0.82, 0.83, 0.75, 0.14)
+	divider.custom_minimum_size = Vector2(0, 1)
+	details_content.add_child(divider)
+
+
+func _build_toast() -> void:
+	toast_panel = _make_panel("Toast", 0.5, 0.73, 0.5, 0.73, -200, 0, 200, 54)
+	toast_panel.visible = false
+	var margin := _add_margin(toast_panel, 14, 8, 14, 8)
+	toast_label = _label("", 12, Color(0.94, 0.93, 0.84), true)
+	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	margin.add_child(toast_label)
+
+
+func _make_panel(
+	node_name: String,
+	left: float,
+	top: float,
+	right: float,
+	bottom: float,
+	offset_l: float,
+	offset_t: float,
+	offset_r: float,
+	offset_b: float
+) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.name = node_name
+	panel.anchor_left = left
+	panel.anchor_top = top
+	panel.anchor_right = right
+	panel.anchor_bottom = bottom
+	panel.offset_left = offset_l
+	panel.offset_top = offset_t
+	panel.offset_right = offset_r
+	panel.offset_bottom = offset_b
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.add_theme_stylebox_override("panel", _panel_style())
+	screen.add_child(panel)
+	return panel
+
+
+func _add_margin(parent: Control, left: int, top: int, right: int, bottom: int) -> MarginContainer:
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", left)
+	margin.add_theme_constant_override("margin_top", top)
+	margin.add_theme_constant_override("margin_right", right)
+	margin.add_theme_constant_override("margin_bottom", bottom)
+	parent.add_child(margin)
+	return margin
+
+
+func _label(text_value: String, size: int, color: Color, bold: bool = false) -> Label:
+	var label := Label.new()
+	label.text = text_value
+	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_color_override("font_color", color)
+	if bold:
+		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.34))
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return label
+
+
+func _panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.055, 0.075, 0.061, 0.91)
+	style.border_color = Color(0.79, 0.79, 0.65, 0.15)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(12)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.24)
+	style.shadow_size = 8
+	return style
+
+
+func _style_button(button: Button, compact: bool) -> void:
+	button.add_theme_stylebox_override("normal", _button_style(Color(0.11, 0.15, 0.12, 0.92)))
+	button.add_theme_stylebox_override("hover", _button_style(Color(0.17, 0.23, 0.17, 0.97)))
+	button.add_theme_stylebox_override("pressed", _button_style(Color(0.24, 0.34, 0.23, 1.0)))
+	button.add_theme_stylebox_override("disabled", _button_style(Color(0.07, 0.09, 0.075, 0.72)))
+	button.add_theme_color_override("font_color", Color(0.88, 0.90, 0.81))
+	button.add_theme_color_override("font_hover_color", Color(0.97, 0.97, 0.87))
+	button.add_theme_color_override("font_pressed_color", Color(0.97, 0.97, 0.87))
+	button.add_theme_color_override("font_disabled_color", Color(0.45, 0.49, 0.42))
+	button.add_theme_font_size_override("font_size", 10 if compact else 11)
+
+
+func _button_style(color: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.border_color = Color(0.82, 0.83, 0.69, 0.12)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(9)
+	return style
+
+
+func _progress_background() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.10, 0.13, 0.10, 0.95)
+	style.set_corner_radius_all(3)
+	return style
+
+
+func _progress_fill() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.59, 0.68, 0.36)
+	style.set_corner_radius_all(3)
+	return style
+
+
+func _on_action_pressed(action: String) -> void:
+	active_action = action
+	_update_button_states()
+	action_selected.emit(action)
+
+
+func _on_speed_pressed(speed: float) -> void:
+	for value in speed_buttons:
+		(speed_buttons[value] as Button).set_pressed_no_signal(is_equal_approx(float(value), speed))
+	speed_selected.emit(speed)
+
+
+func set_active_action(action: String) -> void:
+	active_action = action
+	_update_button_states()
+
+
+func _update_button_states() -> void:
+	for action in action_buttons:
+		(action_buttons[action] as Button).set_pressed_no_signal(action == active_action)
+
+
+func _refresh_hud() -> void:
+	if simulation == null:
+		return
+	for key in resource_labels:
+		var value: Variant = simulation.resources.get(key, 0)
+		var prefix := "$" if key == "money" else ""
+		(resource_labels[key] as Label).text = prefix + str(int(value))
+	day_label.text = "DAY %02d" % simulation.day_number
+	if get_viewport().get_visible_rect().size.x < 620.0:
+		speed_label.text = "ACCELERATED x%.0f" % simulation.game_speed
+	else:
+		speed_label.text = "ACCELERATED  ·  x%.0f" % simulation.game_speed
+	objective_title.text = simulation.get_phase_title()
+	objective_hint.text = simulation.get_instruction()
+	objective_progress.text = simulation.get_progress_text()
+	var progress := 0.0
+	if simulation.shelter != null and not simulation.shelter.is_complete:
+		progress = simulation.shelter.construction_progress * 100.0
+	elif simulation.land_state == LandState.CLEARING:
+		progress = simulation.land_progress * 100.0
+	elif simulation.land_state == LandState.PREPARING:
+		progress = simulation.preparation_progress * 100.0
+	elif simulation.worker != null:
+		progress = simulation.worker.job_progress * 100.0
+	objective_bar.value = 100.0 if progress >= 100.0 else float(int(floor(progress / 25.0)) * 25)
+	for value in speed_buttons:
+		(speed_buttons[value] as Button).set_pressed_no_signal(
+			is_equal_approx(float(value), simulation.game_speed)
+		)
+	_update_action_availability()
+	if details_panel.visible and selected_kind == "management":
+		_update_management_values()
+
+
+func _update_action_availability() -> void:
+	var build: Button = action_buttons.BUILD
+	build.disabled = simulation.shelter != null
+	var land: Button = action_buttons.LAND
+	var plant: Button = action_buttons.PLANT
+	var shelter_ready: bool = simulation.shelter != null and simulation.shelter.is_complete
+	land.disabled = (
+		not shelter_ready
+		or simulation.land_state == LandState.CLEARING
+		or simulation.land_state == LandState.PREPARING
+		or simulation.land_state == LandState.PREPARED
+	)
+	if simulation.land_state == LandState.CLEARED:
+		land.text = "▧\nPREPARE"
+	else:
+		land.text = "▧\nLAND"
+	plant.disabled = simulation.land_state != LandState.PREPARED
+	var worker_button: Button = action_buttons.WORKERS
+	worker_button.text = "◎\nWORKERS"
+
+
+func _on_state_changed() -> void:
+	_refresh_hud()
+	if details_panel.visible and selected_kind == "worker":
+		_update_worker_detail_values()
+	elif details_panel.visible and selected_kind == "shelter":
+		_render_shelter_details()
+
+
+func set_selected_worker() -> void:
+	selected_kind = "worker"
+	selected_id = simulation.worker.id
+	_last_detail_signature = ""
+	details_panel.visible = true
+	_render_worker_details()
+
+
+func show_palm_detail(palm) -> void:
+	selected_kind = "palm"
+	selected_id = palm.id
+	_last_detail_signature = ""
+	details_panel.visible = true
+	_render_palm_details(palm)
+
+
+func show_shelter_detail() -> void:
+	selected_kind = "shelter"
+	selected_id = "starter_shelter"
+	_last_detail_signature = ""
+	details_panel.visible = true
+	_render_shelter_details()
+
+
+func show_management() -> void:
+	selected_kind = "management"
+	selected_id = ""
+	_last_detail_signature = ""
+	details_panel.visible = true
+	_render_management_details()
+
+
+func close_details() -> void:
+	dismiss_details()
+	selection_closed.emit()
+
+
+func dismiss_details() -> void:
+	details_panel.visible = false
+	selected_kind = ""
+	selected_id = ""
+	_last_detail_signature = ""
+
+
+func refresh_hud() -> void:
+	_refresh_hud()
+
+
+func _clear_detail_rows() -> void:
+	for index in range(details_content.get_child_count() - 1, 1, -1):
+		details_content.get_child(index).queue_free()
+
+
+func _add_detail_label(
+	text_value: String, color: Color = Color(0.77, 0.80, 0.72), font_size: int = 12
+) -> Label:
+	var label := _label(text_value, font_size, color)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details_content.add_child(label)
+	return label
+
+
+func _add_detail_row(caption: String, value: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var label := _label(caption, 11, Color(0.62, 0.69, 0.60))
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var amount := _label(value, 11, Color(0.92, 0.92, 0.82), true)
+	amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(label)
+	row.add_child(amount)
+	details_content.add_child(row)
+
+
+func _render_worker_details() -> void:
+	if simulation == null:
+		return
+	var signature := (
+		"%s|%s|%d|%d|%.0f"
+		% [
+			simulation.worker.worker_name,
+			simulation.worker.state_name(),
+			simulation.worker.job_queue.size(),
+			simulation.worker.experience,
+			simulation.worker.energy
+		]
+	)
+	if signature == _last_detail_signature:
+		return
+	_last_detail_signature = signature
+	_clear_detail_rows()
+	details_title.text = simulation.worker.worker_name.to_upper()
+	_add_detail_row("CURRENT STATE", simulation.worker.state_name())
+	_add_detail_row("ENERGY", "%.0f%%" % simulation.worker.energy)
+	_add_detail_row("MORALE", "%.0f%%" % simulation.worker.morale)
+	_add_detail_row("EXPERIENCE", "%.0f" % simulation.worker.experience)
+	_add_detail_label(
+		"Worker routes to each job and performs the work in-world.", Color(0.68, 0.73, 0.63), 10
+	)
+
+
+func _update_worker_detail_values() -> void:
+	if details_panel.visible and selected_kind == "worker":
+		_render_worker_details()
+
+
+func _render_palm_details(palm) -> void:
+	var signature := (
+		"%s|%d|%d|%d|%d|%d|%d|%d|%d"
+		% [
+			palm.id,
+			int(palm.growth_stage),
+			int(floor(palm.planting_age_days)),
+			int(round(palm.health)),
+			int(round(palm.fertilizer_state)),
+			int(round(palm.pest_state)),
+			int(palm.inspected),
+			int(simulation.resources.fertilizer),
+			int(simulation.resources.pesticide)
+		]
+	)
+	if signature == _last_detail_signature:
+		return
+	_last_detail_signature = signature
+	_clear_detail_rows()
+	details_title.text = palm.stage_name().to_upper()
+	_add_detail_row("AGE", "%.1f game days" % palm.planting_age_days)
+	_add_detail_row("HEALTH", "%.0f / 100" % palm.health)
+	_add_detail_row("FERTILIZER", "%.0f%%" % palm.fertilizer_state)
+	_add_detail_row("PEST PRESSURE", "%.0f%%" % palm.pest_state)
+	_add_detail_row(
+		"INSPECTED", "Day %d" % palm.last_inspected_day if palm.inspected else "Not yet"
+	)
+	_add_detail_label(
+		"Accelerated growth: seedling → young → developing → mature.", Color(0.68, 0.73, 0.63), 10
+	)
+	_add_detail_button(
+		"FERTILIZE  ·  5", "FERTILIZE", palm.id, int(simulation.resources.fertilizer) >= 5
+	)
+	_add_detail_button("INSPECT", "INSPECT", palm.id, true)
+	_add_detail_button(
+		"TREAT PESTS  ·  2", "TREAT", palm.id, int(simulation.resources.pesticide) >= 2
+	)
+
+
+func refresh_palm_detail(palm) -> void:
+	if details_panel.visible and selected_kind == "palm" and selected_id == palm.id:
+		_render_palm_details(palm)
+
+
+func _render_shelter_details() -> void:
+	_clear_detail_rows()
+	details_title.text = "STARTER SHELTER"
+	if simulation.shelter == null:
+		_add_detail_label("No shelter constructed yet.")
+	else:
+		_add_detail_row(
+			"CONSTRUCTION", "%d%%" % int(round(simulation.shelter.construction_progress * 100.0))
+		)
+		_add_detail_row(
+			"STATUS",
+			(
+				"Complete"
+				if simulation.shelter.is_complete
+				else simulation.worker.state_name().capitalize()
+			)
+		)
+		_add_detail_label(
+			"A first base for the crew and plantation operations.", Color(0.68, 0.73, 0.63), 10
+		)
+
+
+func _render_management_details() -> void:
+	_clear_detail_rows()
+	details_title.text = "ESTATE OVERVIEW"
+	_update_management_values()
+
+
+func _update_management_values() -> void:
+	if not details_panel.visible or selected_kind != "management":
+		return
+	var signature := (
+		"%d|%d|%d|%d|%s"
+		% [
+			simulation.day_number,
+			simulation.palms.size(),
+			simulation.resources.seedlings,
+			simulation.resources.money,
+			simulation.worker.state_name()
+		]
+	)
+	if signature == _last_detail_signature:
+		return
+	_last_detail_signature = signature
+	_clear_detail_rows()
+	details_title.text = "ESTATE OVERVIEW"
+	_add_detail_row("GAME DAY", str(simulation.day_number))
+	_add_detail_row("LAND", _land_state_label())
+	_add_detail_row("PALMS", str(simulation.palms.size()))
+	_add_detail_row("WORKER", simulation.worker.state_name().capitalize())
+	_add_detail_row("GAME SPEED", "x%.0f" % simulation.game_speed)
+	_add_detail_label(
+		"Operations follow the prototype sequence: shelter → clearing → row preparation → planting → maintenance.",
+		Color(0.68, 0.73, 0.63),
+		10
+	)
+
+
+func _land_state_label() -> String:
+	match simulation.land_state:
+		LandState.FOREST:
+			return "Forest"
+		LandState.CLEARING:
+			return "Clearing"
+		LandState.CLEARED:
+			return "Cleared"
+		LandState.PREPARING:
+			return "Preparing"
+		LandState.PREPARED:
+			return "Prepared"
+	return "—"
+
+
+func _add_detail_button(text_value: String, action: String, palm_id: String, enabled: bool) -> void:
+	var button := Button.new()
+	button.text = text_value
+	button.custom_minimum_size = Vector2(0, 34)
+	button.disabled = not enabled
+	button.focus_mode = Control.FOCUS_NONE
+	_style_button(button, true)
+	button.pressed.connect(func(): maintenance_requested.emit(action, palm_id))
+	details_content.add_child(button)
+
+
+func show_toast(message: String, kind: String = "info") -> void:
+	if not is_instance_valid(toast_panel):
+		return
+	_toast_serial += 1
+	var serial := _toast_serial
+	toast_label.text = message
+	var panel_style := _panel_style()
+	match kind:
+		"success":
+			panel_style.border_color = Color(0.48, 0.69, 0.34, 0.64)
+		"warning":
+			panel_style.border_color = Color(0.82, 0.62, 0.24, 0.66)
+		"error":
+			panel_style.border_color = Color(0.76, 0.31, 0.24, 0.7)
+		_:
+			panel_style.border_color = Color(0.63, 0.71, 0.55, 0.42)
+	toast_panel.add_theme_stylebox_override("panel", panel_style)
+	toast_panel.modulate.a = 1.0
+	toast_panel.visible = true
+	if _toast_tween != null and _toast_tween.is_running():
+		_toast_tween.kill()
+	_toast_tween = create_tween()
+	_toast_tween.tween_interval(2.8)
+	_toast_tween.tween_property(toast_panel, "modulate:a", 0.0, 0.35)
+	_toast_tween.tween_callback(
+		func():
+			if serial == _toast_serial and is_instance_valid(toast_panel):
+				toast_panel.visible = false
+	)
+
+
+func _refresh_action_button_state() -> void:
+	_update_button_states()
+
+
+func _update_responsive_layout() -> void:
+	if screen == null:
+		return
+	var viewport_width := get_viewport().get_visible_rect().size.x
+	var resource_panel := screen.get_node_or_null("Resources") as PanelContainer
+	var status_panel := screen.get_node_or_null("StatusCard") as PanelContainer
+	var time_panel := screen.get_node_or_null("TimeAndSpeed") as PanelContainer
+	var action_panel := screen.get_node_or_null("ActionBar") as PanelContainer
+	if viewport_width < 1000.0:
+		resource_panel.anchor_left = 0.0
+		resource_panel.anchor_right = 1.0
+		resource_panel.offset_left = 18.0
+		resource_panel.offset_right = -18.0
+		resource_panel.offset_top = 88.0
+		resource_panel.offset_bottom = 145.0
+	else:
+		resource_panel.anchor_left = 0.5
+		resource_panel.anchor_right = 0.5
+		resource_panel.offset_left = -225.0
+		resource_panel.offset_right = 225.0
+		resource_panel.offset_top = 16.0
+		resource_panel.offset_bottom = 81.0
+	if viewport_width < 620.0:
+		status_panel.offset_left = 10.0
+		status_panel.offset_right = 180.0
+		status_panel.offset_top = 10.0
+		status_panel.offset_bottom = 75.0
+		time_panel.offset_left = -214.0
+		time_panel.offset_right = -10.0
+		time_panel.offset_top = 10.0
+		time_panel.offset_bottom = 75.0
+		for speed in speed_buttons:
+			var speed_button := speed_buttons[speed] as Button
+			speed_button.custom_minimum_size = Vector2(26, 30)
+			speed_button.add_theme_font_size_override("font_size", 8)
+		action_panel.offset_left = -viewport_width * 0.5 + 8.0
+		action_panel.offset_right = viewport_width * 0.5 - 8.0
+		action_panel.offset_top = -91.0
+		action_panel.offset_bottom = -8.0
+		for action in action_buttons:
+			var button := action_buttons[action] as Button
+			button.custom_minimum_size = Vector2(52, 56)
+			button.add_theme_font_size_override("font_size", 8)
+	elif viewport_width < 1000.0:
+		status_panel.offset_left = 18.0
+		status_panel.offset_right = 248.0
+		time_panel.offset_left = -275.0
+		time_panel.offset_right = -18.0
+		action_panel.offset_left = -245.0
+		action_panel.offset_right = 245.0
+		action_panel.offset_top = -95.0
+		action_panel.offset_bottom = -14.0
+		for action in action_buttons:
+			var button := action_buttons[action] as Button
+			button.custom_minimum_size = Vector2(76, 58)
+			button.add_theme_font_size_override("font_size", 9)
+	else:
+		status_panel.offset_left = 18.0
+		status_panel.offset_right = 248.0
+		time_panel.offset_left = -290.0
+		time_panel.offset_right = -18.0
+		action_panel.offset_left = -251.0
+		action_panel.offset_right = 251.0
+		action_panel.offset_top = -95.0
+		action_panel.offset_bottom = -14.0
+		for action in action_buttons:
+			var button := action_buttons[action] as Button
+			button.custom_minimum_size = Vector2(82, 58)
+			button.add_theme_font_size_override("font_size", 10)
+	if viewport_width >= 620.0:
+		for speed in speed_buttons:
+			var speed_button := speed_buttons[speed] as Button
+			speed_button.custom_minimum_size = Vector2(39, 34)
+			speed_button.add_theme_font_size_override("font_size", 10)

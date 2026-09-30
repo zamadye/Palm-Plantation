@@ -1,0 +1,4 @@
+# Godot editor cache, local-only export config, and generated WebGL build
+.godot/
+export.cfg
+/build/

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#18251d">
+  <title>Palm Plantation — Web Preview</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="world" aria-label="Interactive 3D plantation preview"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <section class="brand panel">
+      <div class="brand-mark" aria-hidden="true">⌁</div>
+      <div><span class="eyebrow">FIELD OFFICE · PROTOTYPE 0.1</span><strong>Kampung Baru</strong></div>
+    </section>
+    <section class="resources panel" aria-label="Resources">
+      <div class="resource"><span class="resource-icon money">$</span><div><b id="res-money">1,800</b><small>FUNDS</small></div></div>
+      <div class="resource"><span class="resource-icon wood">▰</span><div><b id="res-wood">28</b><small>TIMBER</small></div></div>
+      <div class="resource"><span class="resource-icon seed">♧</span><div><b id="res-seedlings">16</b><small>SEEDLINGS</small></div></div>
+      <div class="resource"><span class="resource-icon fert">✦</span><div><b id="res-fertilizer">30</b><small>FERTILIZER</small></div></div>
+      <div class="resource"><span class="resource-icon treat">＋</span><div><b id="res-pesticide">12</b><small>TREATMENT</small></div></div>
+    </section>
+    <section class="clock panel">
+      <div class="clock-readout"><small>ESTATE DAY</small><b id="day-label">01</b></div>
+      <div class="speed-control" aria-label="Simulation speed">
+        <small>PACE</small><div class="speed-buttons">
+          <button data-speed="1">1×</button><button class="selected" data-speed="2">2×</button>
+          <button data-speed="4">4×</button><button data-speed="6">6×</button>
+        </div>
+      </div>
+    </section>
+  </header>
+
+  <aside class="objective panel" aria-live="polite">
+    <div class="objective-kicker"><span class="status-dot"></span><span id="phase-label">01 · ESTABLISH A BASE</span></div>
+    <h1 id="objective-title">Build the starter shelter</h1>
+    <p id="objective-hint">Choose a clear spot in camp. Your crew will build it in stages.</p>
+    <div class="progress-copy"><span id="progress-label">WAITING FOR BUILD SITE</span><b id="progress-value">0%</b></div>
+    <div class="progress-track"><i id="progress-fill"></i></div>
+  </aside>
+
+  <aside id="details" class="details panel hidden" aria-live="polite"></aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="hint-chip"><span class="hint-dot"></span> DRAG TO PAN <i></i> SCROLL / PINCH TO ZOOM <i></i> Q / E ROTATE</div>
+
+  <nav class="actionbar panel" aria-label="Estate actions">
+    <button class="action" data-action="BUILD"><span>⌂</span><b>BUILD</b><small>SHELTER</small></button>
+    <button class="action" data-action="LAND"><span>▧</span><b>LAND</b><small>CLEAR / PREP</small></button>
+    <button class="action" data-action="PLANT"><span>♧</span><b>PLANT</b><small>SEEDLINGS</small></button>
+    <button class="action" data-action="WORKERS"><span>◎</span><b>WORKERS</b><small>CREW STATUS</small></button>
+    <button class="action" data-action="MANAGEMENT"><span>▤</span><b>MANAGEMENT</b><small>BLOCK REPORT</small></button>
+  </nav>
+
+  <script src="vendor/three.min.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

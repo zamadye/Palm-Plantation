@@ -8,22 +8,22 @@ A compact Godot 4 strategy/management vertical slice. The scene is an elevated, 
 
 Open this folder as a project in **Godot 4.3 or newer** and run `scenes/main/main.tscn` (or press F6/F5 in the editor). The project uses Godot's Mobile renderer and landscape layout. No plugins or downloaded asset packs are required.
 
-## Browser preview (the actual Godot game)
+## Browser preview (no Godot installation)
 
-This is a **Godot WebGL export**, not a separate JavaScript recreation. Godot's Web exporter creates `index.html`, JavaScript, WebAssembly, and packed project data from this same project. Python does **not** convert or import Godot assets; `http.server` only serves the files that Godot has already exported.
+`web-preview/` is a small browser-side **JavaScript/Three.js port** of the Prototype 0.1 view and core loop, modeled on the no-Godot web approach in Last-Harbord. It uses WebGL in the browser and the same map layout, actions, resources, worker, shelter, rows, palms, and growth sequence.
 
-1. Install **Godot 4.3+** and the matching Web export templates.
-2. From this folder run `python3 scripts/preview_web.py` (or pass `--godot /path/to/godot`; `GODOT_BIN` is also supported). The script runs Godot headlessly to export, then starts Python's standard `http.server`.
-3. Open `http://localhost:8000` in a WebGL 2-capable browser. Use `--port 8080` to change the port.
+This is **not** a converter that imports `.gd` or `.tscn` files. Browsers cannot execute GDScript or Godot scenes directly. Last-Harbord's web version also implements its own JavaScript renderer/game logic; its Python server only serves static files. Palm Plantation's world assets are generated procedurally by Godot scripts, so the web preview recreates those simple shapes in Three.js modules rather than loading Godot resources.
 
-The two operations can also be run separately:
+Run from this folder:
 
 ```sh
-godot --headless --path . --export-debug Web build/web/index.html
-python3 -m http.server 8000 --bind 0.0.0.0 --directory build/web
+cd web-preview
+python3 -m http.server 8000 --bind 0.0.0.0
 ```
 
-The committed `Web` preset writes generated files to `build/web/` (ignored by Git). `scripts/preview_web.py --serve-only` serves an existing export without rebuilding it. The project keeps its Mobile renderer for the native game and selects Godot's Compatibility renderer for the Web platform, which is required for WebGL. Web export/runtime verification still requires a local Godot installation with matching templates.
+Then open `http://localhost:8000` in a WebGL 2-capable browser. No Godot, Node.js, build step, or internet-hosted JavaScript library is needed. The local `vendor/three.min.js` file provides the WebGL renderer. Drag to pan, wheel/pinch to zoom, Q/E to rotate, and use the five bottom actions to test the browser preview's prototype loop.
+
+The preview mirrors gameplay behavior but is a separate web implementation, not the exact Godot runtime. Run the native project in Godot 4.3+ to test the source game itself.
 
 ## Controls
 
@@ -60,4 +60,4 @@ Performance was not benchmarked in this sandbox. The prototype is designed aroun
 - The starter shelter is a staged procedural model. Forest removal is visual progress-based hiding, not forestry physics.
 - Growth is accelerated for testing; health and pest changes are intentionally simplified.
 - No save/load, harvesting economy, mill, multiplayer, backend, or large-estate scaling systems yet.
-- The GDScript files passed a `gdtoolkit` parser check, but this environment did not have a Godot executable or Web export templates. Neither the native scene nor the WebGL export could be run here, so a full playthrough and FPS measurement remain unverified. Use the browser-preview steps above on a machine with Godot 4.3+ and matching templates.
+- The GDScript files passed a `gdtoolkit` parser check, but this environment does not have Godot installed, so the native scene has not been loaded or play-tested in-engine. The browser preview is a separate JavaScript implementation and does not validate Godot runtime behavior. Target-device FPS also remains unmeasured.

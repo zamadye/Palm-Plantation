@@ -5,6 +5,7 @@ class_name PlantationGameUI
 signal action_selected(action: String)
 signal speed_selected(speed: float)
 signal maintenance_requested(action: String, palm_id: String)
+signal land_clear_requested
 signal selection_closed
 
 var simulation
@@ -25,7 +26,7 @@ var details_title: Label
 var toast_panel: PanelContainer
 var toast_label: Label
 var _toast_tween: Tween
-enum LandState { FOREST, CLEARING, CLEARED, PREPARING, PREPARED }
+enum LandState { FOREST, CLEARING, PREPARED }
 
 var active_action: String = ""
 var selected_kind: String = ""
@@ -67,6 +68,10 @@ func _process(delta: float) -> void:
 			var palm = simulation.get_palm(selected_id)
 			if palm != null:
 				_render_palm_details(palm)
+		elif selected_kind == "land":
+			_render_land_details()
+		elif selected_kind == "shelter":
+			_render_shelter_details()
 
 
 func _build_ui() -> void:
@@ -93,7 +98,7 @@ func _build_status_card() -> void:
 	var rows := VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 3)
 	margin.add_child(rows)
-	var eyebrow := _label("PALM ESTATE   /   PROTOTYPE 0.1", 9, Color(0.69, 0.76, 0.63), true)
+	var eyebrow := _label("PALM ESTATE   /   PROTOTYPE 0.2", 9, Color(0.69, 0.76, 0.63), true)
 	rows.add_child(eyebrow)
 	var title := _label("Kampung Baru", 19, Color(0.94, 0.93, 0.84), true)
 	rows.add_child(title)
@@ -215,7 +220,7 @@ func _build_details_panel() -> void:
 	details_content.add_theme_constant_override("separation", 8)
 	margin.add_child(details_content)
 	var header := HBoxContainer.new()
-	details_title = _label("INSPECT", 14, Color(0.94, 0.93, 0.84), true)
+	details_title = _label("DETAILS", 14, Color(0.94, 0.93, 0.84), true)
 	details_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var close := Button.new()
 	close.text = "×"
@@ -377,8 +382,6 @@ func _refresh_hud() -> void:
 		progress = simulation.shelter.construction_progress * 100.0
 	elif simulation.land_state == LandState.CLEARING:
 		progress = simulation.land_progress * 100.0
-	elif simulation.land_state == LandState.PREPARING:
-		progress = simulation.preparation_progress * 100.0
 	elif simulation.worker != null:
 		progress = simulation.worker.job_progress * 100.0
 	objective_bar.value = 100.0 if progress >= 100.0 else float(int(floor(progress / 25.0)) * 25)
@@ -397,16 +400,8 @@ func _update_action_availability() -> void:
 	var land: Button = action_buttons.LAND
 	var plant: Button = action_buttons.PLANT
 	var shelter_ready: bool = simulation.shelter != null and simulation.shelter.is_complete
-	land.disabled = (
-		not shelter_ready
-		or simulation.land_state == LandState.CLEARING
-		or simulation.land_state == LandState.PREPARING
-		or simulation.land_state == LandState.PREPARED
-	)
-	if simulation.land_state == LandState.CLEARED:
-		land.text = "▧\nPREPARE"
-	else:
-		land.text = "▧\nLAND"
+	land.disabled = not shelter_ready or simulation.land_state == LandState.CLEARING
+	land.text = "▧\nLAND"
 	plant.disabled = simulation.land_state != LandState.PREPARED
 	var worker_button: Button = action_buttons.WORKERS
 	worker_button.text = "◎\nWORKERS"
@@ -418,6 +413,8 @@ func _on_state_changed() -> void:
 		_update_worker_detail_values()
 	elif details_panel.visible and selected_kind == "shelter":
 		_render_shelter_details()
+	elif details_panel.visible and selected_kind == "land":
+		_render_land_details()
 
 
 func set_selected_worker() -> void:
@@ -442,6 +439,14 @@ func show_shelter_detail() -> void:
 	_last_detail_signature = ""
 	details_panel.visible = true
 	_render_shelter_details()
+
+
+func show_land_detail() -> void:
+	selected_kind = "land"
+	selected_id = simulation.land_zone.id
+	_last_detail_signature = ""
+	details_panel.visible = true
+	_render_land_details()
 
 
 func show_management() -> void:
@@ -497,24 +502,28 @@ func _add_detail_row(caption: String, value: String) -> void:
 func _render_worker_details() -> void:
 	if simulation == null:
 		return
-	var signature := (
-		"%s|%s|%d|%d|%.0f"
-		% [
-			simulation.worker.worker_name,
-			simulation.worker.state_name(),
-			simulation.worker.job_queue.size(),
-			simulation.worker.experience,
-			simulation.worker.energy
-		]
-	)
+	var active_task = simulation.worker.active_task
+	var task_id := "—" if active_task == null else active_task.id
+	var task_status := "Available" if active_task == null else "%s · %s" % [active_task.task_type, active_task.status_name()]
+	var task_progress := 0 if active_task == null else int(round(active_task.progress * 100.0))
+	var signature := "%s|%s|%s|%d|%d|%d|%.0f" % [
+		simulation.worker.worker_name,
+		simulation.worker.state_name(),
+		task_id + task_status,
+		task_progress,
+		simulation.worker.task_queue.size(),
+		int(simulation.worker.experience),
+		simulation.worker.energy
+	]
 	if signature == _last_detail_signature:
 		return
 	_last_detail_signature = signature
 	_clear_detail_rows()
 	details_title.text = simulation.worker.worker_name.to_upper()
 	_add_detail_row("CURRENT STATE", simulation.worker.state_name())
-	_add_detail_row("ENERGY", "%.0f%%" % simulation.worker.energy)
-	_add_detail_row("MORALE", "%.0f%%" % simulation.worker.morale)
+	_add_detail_row("ACTIVE TASK", task_status)
+	_add_detail_row("TASK PROGRESS", "%d%%" % task_progress)
+	_add_detail_row("QUEUED TASKS", str(simulation.worker.task_queue.size()))
 	_add_detail_row("EXPERIENCE", "%.0f" % simulation.worker.experience)
 	_add_detail_label(
 		"Worker routes to each job and performs the work in-world.", Color(0.68, 0.73, 0.63), 10
@@ -527,42 +536,32 @@ func _update_worker_detail_values() -> void:
 
 
 func _render_palm_details(palm) -> void:
-	var signature := (
-		"%s|%d|%d|%d|%d|%d|%d|%d|%d"
-		% [
-			palm.id,
-			int(palm.growth_stage),
-			int(floor(palm.planting_age_days)),
-			int(round(palm.health)),
-			int(round(palm.fertilizer_state)),
-			int(round(palm.pest_state)),
-			int(palm.inspected),
-			int(simulation.resources.fertilizer),
-			int(simulation.resources.pesticide)
-		]
-	)
+	var fertilizer_available := simulation._available_resource("fertilizer")
+	var pesticide_available := simulation._available_resource("pesticide")
+	var signature := "%s|%d|%d|%d|%d|%d|%d|%d" % [
+		palm.id,
+		int(palm.growth_stage),
+		int(floor(palm.age)),
+		int(round(palm.health)),
+		int(round(palm.fertilizer)),
+		int(round(palm.pest_risk)),
+		fertilizer_available,
+		pesticide_available
+	]
 	if signature == _last_detail_signature:
 		return
 	_last_detail_signature = signature
 	_clear_detail_rows()
 	details_title.text = palm.stage_name().to_upper()
-	_add_detail_row("AGE", "%.1f game days" % palm.planting_age_days)
+	_add_detail_row("AGE", "%.1f game days" % palm.age)
 	_add_detail_row("HEALTH", "%.0f / 100" % palm.health)
-	_add_detail_row("FERTILIZER", "%.0f%%" % palm.fertilizer_state)
-	_add_detail_row("PEST PRESSURE", "%.0f%%" % palm.pest_state)
-	_add_detail_row(
-		"INSPECTED", "Day %d" % palm.last_inspected_day if palm.inspected else "Not yet"
-	)
+	_add_detail_row("FERTILIZER", "%.0f%%" % palm.fertilizer)
+	_add_detail_row("PEST RISK", "%.0f%%" % palm.pest_risk)
 	_add_detail_label(
-		"Accelerated growth: seedling → young → developing → mature.", Color(0.68, 0.73, 0.63), 10
+		"Accelerated growth: SEEDLING → YOUNG PALM → MATURE PALM.", Color(0.68, 0.73, 0.63), 10
 	)
-	_add_detail_button(
-		"FERTILIZE  ·  5", "FERTILIZE", palm.id, int(simulation.resources.fertilizer) >= 5
-	)
-	_add_detail_button("INSPECT", "INSPECT", palm.id, true)
-	_add_detail_button(
-		"TREAT PESTS  ·  2", "TREAT", palm.id, int(simulation.resources.pesticide) >= 2
-	)
+	_add_detail_button("FERTILIZE  ·  5", "FERTILIZE", palm.id, fertilizer_available >= 5)
+	_add_detail_button("TREAT PESTS  ·  2", "TREAT", palm.id, pesticide_available >= 2)
 
 
 func refresh_palm_detail(palm) -> void:
@@ -570,23 +569,78 @@ func refresh_palm_detail(palm) -> void:
 		_render_palm_details(palm)
 
 
+func _render_land_details() -> void:
+	if simulation == null:
+		return
+	var state_label := _land_state_label()
+	var progress_value := int(round(simulation.land_progress * 100.0))
+	var available_seedlings := simulation._available_resource("seedlings")
+	var available_fertilizer := simulation._available_resource("fertilizer")
+	var available_pesticide := simulation._available_resource("pesticide")
+	var signature := "%s|%d|%d|%d|%d|%d|%d|%d" % [
+		state_label,
+		progress_value,
+		simulation.palms.size(),
+		simulation.reserved_slots.size(),
+		available_seedlings,
+		available_fertilizer,
+		available_pesticide,
+		int(simulation.shelter != null and simulation.shelter.is_complete)
+	]
+	if signature == _last_detail_signature:
+		return
+	_last_detail_signature = signature
+	_clear_detail_rows()
+	details_title.text = "BLOCK 01 · %s" % state_label.to_upper()
+	_add_detail_row("LAND STATE", state_label)
+	match simulation.land_state:
+		LandState.FOREST:
+			_add_detail_label("Select this surveyed block to clear it. Crew and equipment cost: $150.", Color(0.68, 0.73, 0.63), 10)
+			var clear_button := _create_detail_button("CLEAR LAND  ·  $150")
+			clear_button.disabled = simulation.shelter == null or not simulation.shelter.is_complete or int(simulation.resources.money) < 150
+			clear_button.pressed.connect(func(): land_clear_requested.emit())
+			details_content.add_child(clear_button)
+		LandState.CLEARING:
+			_add_detail_row("CLEARING", "%d%%" % progress_value)
+			_add_detail_label("Rafi is removing vegetation. The 4 × 4 planting grid appears when clearing is complete.", Color(0.68, 0.73, 0.63), 10)
+		LandState.PREPARED:
+			_add_detail_row("PLANTING POSITIONS", "%d / 16 occupied or queued" % (simulation.palms.size() + simulation.reserved_slots.size()))
+			_add_detail_label("Four orderly rows are ready. Choose PLANT and tap an open marker.", Color(0.68, 0.73, 0.63), 10)
+			var plant_button := _create_detail_button("PLANT A SEEDLING")
+			plant_button.disabled = available_seedlings < 1 or simulation.palms.size() + simulation.reserved_slots.size() >= simulation.planting_slots.size()
+			plant_button.pressed.connect(func():
+				active_action = "PLANT"
+				_update_button_states()
+				action_selected.emit("PLANT")
+			)
+			details_content.add_child(plant_button)
+			if not simulation.palms.is_empty():
+				_add_detail_button("FERTILIZE BLOCK  ·  5", "FERTILIZE", simulation.land_zone.id, available_fertilizer >= 5)
+				_add_detail_button("TREAT BLOCK  ·  2", "TREAT", simulation.land_zone.id, available_pesticide >= 2)
+
+
+func _create_detail_button(text_value: String) -> Button:
+	var button := Button.new()
+	button.text = text_value
+	button.custom_minimum_size = Vector2(0, 34)
+	button.focus_mode = Control.FOCUS_NONE
+	_style_button(button, true)
+	return button
+
+
 func _render_shelter_details() -> void:
+	var progress := 0 if simulation.shelter == null else int(round(simulation.shelter.construction_progress * 100.0))
+	var signature := "shelter|%d|%s" % [progress, "complete" if simulation.shelter != null and simulation.shelter.is_complete else "building"]
+	if signature == _last_detail_signature:
+		return
+	_last_detail_signature = signature
 	_clear_detail_rows()
 	details_title.text = "STARTER SHELTER"
 	if simulation.shelter == null:
 		_add_detail_label("No shelter constructed yet.")
 	else:
-		_add_detail_row(
-			"CONSTRUCTION", "%d%%" % int(round(simulation.shelter.construction_progress * 100.0))
-		)
-		_add_detail_row(
-			"STATUS",
-			(
-				"Complete"
-				if simulation.shelter.is_complete
-				else simulation.worker.state_name().capitalize()
-			)
-		)
+		_add_detail_row("CONSTRUCTION", "%d%%" % progress)
+		_add_detail_row("STATUS", "Complete" if simulation.shelter.is_complete else simulation.worker.state_name().capitalize())
 		_add_detail_label(
 			"A first base for the crew and plantation operations.", Color(0.68, 0.73, 0.63), 10
 		)
@@ -622,7 +676,7 @@ func _update_management_values() -> void:
 	_add_detail_row("WORKER", simulation.worker.state_name().capitalize())
 	_add_detail_row("GAME SPEED", "x%.0f" % simulation.game_speed)
 	_add_detail_label(
-		"Operations follow the prototype sequence: shelter → clearing → row preparation → planting → maintenance.",
+		"Operations: shelter → clear land → prepared grid → plant → maintain.",
 		Color(0.68, 0.73, 0.63),
 		10
 	)
@@ -634,10 +688,6 @@ func _land_state_label() -> String:
 			return "Forest"
 		LandState.CLEARING:
 			return "Clearing"
-		LandState.CLEARED:
-			return "Cleared"
-		LandState.PREPARING:
-			return "Preparing"
 		LandState.PREPARED:
 			return "Prepared"
 	return "—"

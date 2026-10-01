@@ -109,16 +109,18 @@ function buildPalmFronds(length, drop, color) {
 
 function createPalm(stage) {
   const root = new THREE.Group();
-  const heights = [.33, .78, 1.65, 2.8];
-  const radii = [.48, .88, 1.38, 1.95];
-  const leaves = [5, 6, 7, 8];
-  const h = heights[stage] ?? heights[0], r = radii[stage] ?? radii[0];
+  // Exactly three data stages: seedling, young palm, mature palm.
+  const heights = [.33, .82, 2.8];
+  const radii = [.48, .9, 1.95];
+  const leaves = [5, 6, 8];
+  const stageIndex = Math.max(0, Math.min(2, stage));
+  const h = heights[stageIndex], r = radii[stageIndex];
   cylinder(root, h < .5 ? .055 : h * .065, h < .5 ? .055 : h * .065, h, [0, h / 2, 0], '#765333', 9);
   const crown = new THREE.Group();
   crown.position.y = h + .02;
   sphere(crown, r * .18, [0, 0, 0], '#5c702d', [1, .68, 1], 7);
-  for (let i = 0; i < leaves[stage]; i++) {
-    const angle = Math.PI * 2 * i / leaves[stage] + .17;
+  for (let i = 0; i < leaves[stageIndex]; i++) {
+    const angle = Math.PI * 2 * i / leaves[stageIndex] + .17;
     const len = r * (i % 2 === 0 ? 1.12 : .96);
     const frond = buildPalmFronds(len, r * .42, i % 2 ? '#547b2d' : '#466e27');
     frond.rotation.y = -angle;
@@ -126,6 +128,62 @@ function createPalm(stage) {
   }
   root.add(crown);
   return root;
+}
+
+function createSelectionMarker(field) {
+  const root = new THREE.Group();
+  root.visible = false;
+  const gold = new THREE.MeshBasicMaterial({ color: '#efd27f', transparent: true, opacity: .92, depthWrite: false });
+  const soft = new THREE.MeshBasicMaterial({ color: '#e4c775', transparent: true, opacity: .12, depthWrite: false, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1, .065, 8, 36), gold);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = .075;
+  root.add(ring);
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(1, 32), soft);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = .035;
+  root.add(ground);
+  const zone = new THREE.Group();
+  const edge = (width, depth, x, z) => {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(width, .035, depth), gold);
+    line.position.set(x, .09, z);
+    zone.add(line);
+  };
+  edge(field.w, .07, 0, -field.d / 2); edge(field.w, .07, 0, field.d / 2);
+  edge(.07, field.d, -field.w / 2, 0); edge(.07, field.d, field.w / 2, 0);
+  const wash = new THREE.Mesh(new THREE.PlaneGeometry(field.w, field.d), soft);
+  wash.rotation.x = -Math.PI / 2; wash.position.y = .025; zone.add(wash);
+  root.add(zone);
+  return { root, ring, ground, zone };
+}
+
+function syncSelection(world, sim, selection) {
+  const marker = world.selection;
+  marker.root.visible = Boolean(selection);
+  if (!selection) return;
+  marker.zone.visible = false;
+  marker.ring.visible = true;
+  marker.ground.visible = true;
+  let x = 0, z = 0, radius = 1.2;
+  if (selection.kind === 'zone') {
+    x = world.field.x; z = world.field.z;
+    marker.zone.visible = true; marker.ring.visible = false; marker.ground.visible = false;
+  } else if (selection.kind === 'worker') {
+    x = sim.worker.x; z = sim.worker.z; radius = .95;
+  } else if (selection.kind === 'palm') {
+    const palm = sim.palms.find((entry) => entry.id === selection.id);
+    if (!palm) { marker.root.visible = false; return; }
+    x = palm.position.x; z = palm.position.z;
+    radius = palm.growth_stage === 2 ? 2.05 : palm.growth_stage === 1 ? 1.12 : .7;
+  } else if (selection.kind === 'shelter') {
+    if (!sim.shelter) { marker.root.visible = false; return; }
+    x = sim.shelter.position.x; z = sim.shelter.position.z; radius = 3.4;
+  } else {
+    marker.root.visible = false; return;
+  }
+  marker.root.position.set(x, 0, z);
+  marker.ring.scale.setScalar(radius);
+  marker.ground.scale.setScalar(radius);
 }
 
 function createPerson(isPlayer) {
@@ -257,12 +315,19 @@ export function createWorld(scene, sim) {
     scene.add(tree); clearingTrees.push(tree);
   }
   clearingTrees.sort((a, b) => a.userData.distance - b.userData.distance);
-  // Planting row markers.
+  // Planting row markers and guide lines are present as lightweight nodes, but hidden until land is prepared.
+  const rowGuides = new THREE.Group();
+  for (let row = 0; row < 4; row++) {
+    const z = field.z + (row - 1.5) * 4.3;
+    box(rowGuides, [17.2, .025, .045], [field.x, .035, z], '#aa8b54');
+  }
+  rowGuides.visible = false;
+  scene.add(rowGuides);
   const markers = sim.slots.map((slot) => {
     const root = new THREE.Group();
     const disc = cylinder(root, .42, .42, .055, [0, .055, 0], '#c5a761', 16);
     cylinder(root, .055, .06, .2, [0, .16, 0], '#927946', 8);
-    root.position.set(slot.x, 0, slot.z); scene.add(root); return { root, disc, slot };
+    root.position.set(slot.x, 0, slot.z); root.visible = false; scene.add(root); return { root, disc, slot };
   });
   // Temporary camp and player/worker silhouettes.
   addCamp(scene);
@@ -271,24 +336,26 @@ export function createWorld(scene, sim) {
   const shelter = createShelter();
   scene.add(shelter.root); shelter.root.visible = false;
   const palmViews = new Map();
-  return { scene, clearingTrees, soil, markers, player, worker, shelter, palmViews, field, stakes };
+  const selection = createSelectionMarker(field);
+  scene.add(selection.root);
+  return { scene, clearingTrees, soil, markers, rowGuides, player, worker, shelter, palmViews, field, stakes, selection };
 }
 
-export function syncWorld(world, sim, clock) {
-  const progress = sim.landState === 1 ? sim.landProgress : (sim.landState >= 2 ? 1 : 0);
+export function syncWorld(world, sim, clock, selected = null) {
   world.soil.visible = sim.landState !== 0;
   world.soil.material.opacity = sim.landState === 1 ? .25 + .75 * sim.landProgress : 1;
-  const hiddenCount = sim.landState === 1 ? Math.floor(sim.landProgress * world.clearingTrees.length) : (sim.landState >= 2 ? world.clearingTrees.length : 0);
+  const hiddenCount = sim.landState === 1 ? Math.floor(sim.landProgress * world.clearingTrees.length) : (sim.landState === 2 ? world.clearingTrees.length : 0);
   world.clearingTrees.forEach((tree, i) => { tree.visible = sim.landState === 0 || i >= hiddenCount; });
-  const showMarkers = sim.landState >= 3;
+  const showGrid = sim.landState === 2;
+  world.rowGuides.visible = showGrid;
   world.markers.forEach((entry, i) => {
-    entry.root.visible = showMarkers;
+    entry.root.visible = showGrid && !sim.plantedSlots.has(i);
     if (sim.plantedSlots.has(i)) entry.disc.material.color.set('#5b8b50');
     else if (sim.reservedSlots.has(i)) entry.disc.material.color.set('#d39c49');
     else entry.disc.material.color.set('#c5a761');
   });
   if (sim.shelter && !world.shelter.root.visible) {
-    world.shelter.root.position.set(sim.shelter.x, 0, sim.shelter.z);
+    world.shelter.root.position.set(sim.shelter.position.x, 0, sim.shelter.position.z);
     world.shelter.root.visible = true;
   }
   if (sim.shelter) {
@@ -300,34 +367,53 @@ export function syncWorld(world, sim, clock) {
   }
   for (const palm of sim.palms) {
     const existing = world.palmViews.get(palm.id);
-    if (!existing || existing.stage !== palm.stage) {
-      if (existing) world.scene?.remove(existing.root);
-      const root = createPalm(palm.stage); root.position.set(palm.x, 0, palm.z);
-      // Store the parent scene on first sync so stage upgrades can replace the mesh.
+    if (!existing || existing.stage !== palm.growth_stage) {
+      if (existing) world.scene.remove(existing.root);
+      const root = createPalm(palm.growth_stage);
+      root.position.set(palm.position.x, 0, palm.position.z);
       root.userData.palmId = palm.id;
-      world.palmViews.set(palm.id, { root, stage: palm.stage });
-      if (world.scene) world.scene.add(root);
+      world.palmViews.set(palm.id, { root, stage: palm.growth_stage });
+      world.scene.add(root);
     }
   }
   for (const [id, view] of world.palmViews) {
-    const data = sim.palms.find((p) => p.id === id);
-    if (data) view.root.position.set(data.x, 0, data.z);
+    const data = sim.palms.find((palm) => palm.id === id);
+    if (data) view.root.position.set(data.position.x, 0, data.position.z);
   }
   world.player.position.set(sim.player.x, 0, sim.player.z);
   world.worker.position.set(sim.worker.x, 0, sim.worker.z);
   animatePerson(world.player, sim.player.state, clock);
   animatePerson(world.worker, sim.worker.state, clock + .7);
+  syncSelection(world, sim, selected);
 }
 
 function animatePerson(root, state, clock) {
   const p = root.userData.parts;
   const walking = state === 'WALKING';
-  const working = ['BUILDING', 'CLEARING', 'PLANTING', 'FERTILIZE', 'TREAT', 'INSPECT'].includes(state);
+  const working = ['BUILDING', 'CLEARING', 'PLANTING', 'FERTILIZING', 'TREATING'].includes(state);
   const swing = Math.sin(clock * 8) * .48;
-  p.legs[0].rotation.x = walking ? swing : 0;
-  p.legs[1].rotation.x = walking ? -swing : 0;
-  p.arms[0].rotation.x = walking ? -swing : (working ? .15 : Math.sin(clock * 1.7) * .03);
-  p.arms[1].rotation.x = walking ? swing : (working ? -.55 + Math.sin(clock * 5.8) * .4 : 0);
+  const cycle = Math.sin(clock * (state === 'CLEARING' ? 6.2 : 4.4));
+  p.legs[0].rotation.x = walking ? swing : state === 'PLANTING' ? -.18 : 0;
+  p.legs[1].rotation.x = walking ? -swing : state === 'PLANTING' ? -.12 : 0;
+  if (walking) {
+    p.arms[0].rotation.x = -swing;
+    p.arms[1].rotation.x = swing;
+  } else if (state === 'CLEARING') {
+    p.arms[0].rotation.x = -.65 + cycle * .47;
+    p.arms[1].rotation.x = -.3 + cycle * .35;
+  } else if (state === 'PLANTING') {
+    p.arms[0].rotation.x = .6 + cycle * .08;
+    p.arms[1].rotation.x = .75 - cycle * .1;
+  } else if (state === 'FERTILIZING') {
+    p.arms[0].rotation.x = .25;
+    p.arms[1].rotation.x = -.78 + cycle * .12;
+  } else if (state === 'TREATING') {
+    p.arms[0].rotation.x = -.08;
+    p.arms[1].rotation.x = -.4 + cycle * .14;
+  } else {
+    p.arms[0].rotation.x = Math.sin(clock * 1.7) * .03;
+    p.arms[1].rotation.x = 0;
+  }
   if (p.tool) p.tool.visible = working;
-  root.position.y = walking ? Math.abs(Math.sin(clock * 8)) * .035 : 0;
+  root.position.y = walking ? Math.abs(Math.sin(clock * 8)) * .035 : state === 'PLANTING' ? -.07 : 0;
 }

@@ -1,8 +1,8 @@
 extends RefCounted
 class_name WorkerRecord
 
-## Simulation-only data for a visible worker. Rendering is owned by Main/VisualFactory.
-enum State { IDLE, WALKING, CLEARING, PLANTING, BUILDING, FERTILIZING, INSPECTING, TREATING }
+## Simulation-only worker data. Animation and character nodes are kept in the presentation layer.
+enum State { IDLE, WALKING, CLEARING, PLANTING, BUILDING, FERTILIZING, TREATING }
 
 var id: String = "worker_01"
 var worker_name: String = "Rafi"
@@ -14,8 +14,8 @@ var job_progress: float = 0.0
 var energy: float = 100.0
 var morale: float = 100.0
 var experience: float = 0.0
-var active_job: Dictionary = {}
-var job_queue: Array[Dictionary] = []
+var active_task = null
+var task_queue: Array = []
 var walk_speed: float = 3.5
 var time_in_state: float = 0.0
 
@@ -34,8 +34,6 @@ func state_name() -> String:
 			return "BUILDING"
 		State.FERTILIZING:
 			return "FERTILIZING"
-		State.INSPECTING:
-			return "INSPECTING"
 		State.TREATING:
 			return "TREATING"
 	return "IDLE"

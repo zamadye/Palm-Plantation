@@ -34,6 +34,7 @@ const sim = new PlantationSimulation(toast);
 const world = createWorld(scene, sim);
 let activeAction = '';
 let selection = null;
+let detailSignature = '';
 let focus = new THREE.Vector3(-8, 0, 5);
 let distance = 91;
 let yaw = 40 * Math.PI / 180;
@@ -65,34 +66,79 @@ function setAction(action = '') {
   document.querySelectorAll('.action').forEach((button) => button.classList.toggle('active', button.dataset.action === action));
 }
 function showDetails(kind, data = null) {
-  selection = { kind, data };
+  selection = { kind, id: data?.id ?? null };
+  detailSignature = '';
   renderDetails();
 }
 function closeDetails() {
   selection = null;
+  detailSignature = '';
   document.querySelector('#details').classList.add('hidden');
+}
+
+function detailStateSignature() {
+  if (!selection) return '';
+  if (selection.kind === 'worker') {
+    const task = sim.tasks.find((entry) => entry.id === sim.worker.activeTaskId);
+    return `worker|${sim.worker.state}|${task?.id}|${task?.status}|${Math.floor((task?.progress ?? 0) * 4)}|${sim.taskQueue.length}|${sim.worker.experience}`;
+  }
+  if (selection.kind === 'palm') {
+    const palm = sim.palms.find((entry) => entry.id === selection.id);
+    if (!palm) return 'missing-palm';
+    return `palm|${palm.id}|${palm.growth_stage}|${palm.age.toFixed(1)}|${Math.round(palm.health)}|${Math.round(palm.fertilizer)}|${Math.round(palm.pest_risk)}|${sim._available('fertilizer')}|${sim._available('pesticide')}`;
+  }
+  if (selection.kind === 'zone') {
+    return `zone|${sim.landState}|${Math.floor(sim.landProgress * 4)}|${sim.palms.length}|${sim.reservedSlots.size}|${sim.resources.money}|${sim._available('seedlings')}|${sim._available('fertilizer')}|${sim._available('pesticide')}|${Boolean(sim.shelter?.complete)}`;
+  }
+  if (selection.kind === 'shelter') return `shelter|${Math.floor((sim.shelter?.progress ?? 0) * 4)}|${Boolean(sim.shelter?.complete)}`;
+  return `management|${sim.landState}|${sim.day}|${sim.speed}|${sim.palms.length}|${sim.tasks.filter((task) => task.status === 'QUEUED').length}|${sim.activeTask?.id}`;
 }
 
 function renderDetails() {
   const panel = document.querySelector('#details');
   if (!selection) { panel.classList.add('hidden'); return; }
+  const nextSignature = detailStateSignature();
+  if (nextSignature === detailSignature) return;
+  detailSignature = nextSignature;
   panel.classList.remove('hidden');
   if (selection.kind === 'worker') {
     const worker = sim.worker;
-    const task = worker.jobType ? worker.jobType.replace('_', ' ') : 'Available';
-    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>RAFI · FIELD WORKER</h2><p class="detail-sub">${worker.state} · ${task}</p><div class="detail-row"><span>Energy</span><b>100%</b></div><div class="meter"><i style="width:100%"></i></div><div class="detail-row"><span>Experience</span><b>${worker.experience} jobs</b></div><div class="detail-row"><span>Work queue</span><b>${sim.jobQueue.length} orders</b></div><div class="detail-actions"><button data-focus>FOCUS WORKER</button></div>`;
+    const task = sim.tasks.find((entry) => entry.id === worker.activeTaskId);
+    const taskLabel = task ? `${task.task_type.replace('_', ' ')} · ${task.status}` : 'Available';
+    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>RAFI · FIELD WORKER</h2><p class="detail-sub">${worker.state} · ${taskLabel}</p><div class="detail-row"><span>Current task</span><b>${task ? `${Math.round(task.progress * 100)}%` : '—'}</b></div><div class="meter"><i style="width:${task ? task.progress * 100 : 0}%"></i></div><div class="detail-row"><span>Completed jobs</span><b>${worker.experience}</b></div><div class="detail-row"><span>Work queue</span><b>${sim.taskQueue.length} orders</b></div><div class="detail-actions"><button data-focus>FOCUS WORKER</button></div>`;
   } else if (selection.kind === 'palm') {
-    const palm = sim.palms.find((entry) => entry.id === selection.data.id);
+    const palm = sim.palms.find((entry) => entry.id === selection.id);
     if (!palm) return closeDetails();
-    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>PALM · ${sim.stageName(palm).toUpperCase()}</h2><p class="detail-sub">Age ${palm.age.toFixed(1)} days · ${palm.inspected ? `Inspected day ${palm.lastInspectedDay}` : 'Not inspected'}</p><div class="detail-row"><span>Health</span><b>${Math.round(palm.health)}%</b></div><div class="meter"><i style="width:${palm.health}%;background:#9fbd83"></i></div><div class="detail-row"><span>Fertilizer</span><b>${Math.round(palm.fertilizer)}%</b></div><div class="meter"><i style="width:${palm.fertilizer}%;background:#b8ad6a"></i></div><div class="detail-row"><span>Pest pressure</span><b>${Math.round(palm.pests)}%</b></div><div class="meter"><i style="width:${palm.pests}%;background:#ce8961"></i></div><div class="detail-actions"><button data-maint="FERTILIZE">FERTILIZE · 5</button><button data-maint="INSPECT">INSPECT</button><button data-maint="TREAT">TREAT · 2</button></div>`;
-    panel.querySelectorAll('[data-maint]').forEach((button) => button.addEventListener('click', () => sim.maintenance(button.dataset.maint, palm.id)));
+    const canFertilize = sim._available('fertilizer') >= 5;
+    const canTreat = sim._available('pesticide') >= 2;
+    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>PALM · ${sim.stageName(palm).toUpperCase()}</h2><p class="detail-sub">${palm.id.replace('_', ' ')} · Age ${palm.age.toFixed(1)} game days</p><div class="detail-row"><span>Health</span><b>${Math.round(palm.health)}%</b></div><div class="meter"><i style="width:${palm.health}%;background:#9fbd83"></i></div><div class="detail-row"><span>Fertilizer</span><b>${Math.round(palm.fertilizer)}%</b></div><div class="meter"><i style="width:${palm.fertilizer}%;background:#b8ad6a"></i></div><div class="detail-row"><span>Pest risk</span><b>${Math.round(palm.pest_risk)}%</b></div><div class="meter"><i style="width:${palm.pest_risk}%;background:#ce8961"></i></div><div class="detail-actions"><button data-maint="FERTILIZE" ${canFertilize ? '' : 'disabled'}>FERTILIZE · 5</button><button data-maint="TREAT" ${canTreat ? '' : 'disabled'}>TREAT PEST · 2</button></div>`;
+    panel.querySelectorAll('[data-maint]').forEach((button) => button.addEventListener('click', () => sim.maintenance(button.dataset.maint, 'palm', palm.id)));
+  } else if (selection.kind === 'zone') {
+    const state = ['Forest', 'Clearing', 'Prepared land'][sim.landState];
+    let content = `<div class="detail-row"><span>Block state</span><b>${state}</b></div>`;
+    if (sim.landState === LAND.FOREST) {
+      content += `<p class="detail-note">Clear the marked forest block. A $150 crew and equipment fee is charged when the order starts.</p><div class="detail-actions"><button data-clear ${sim.shelter?.complete ? '' : 'disabled'}>CLEAR LAND · $150</button></div>`;
+    } else if (sim.landState === LAND.CLEARING) {
+      content += `<div class="detail-row"><span>Clearing progress</span><b>${Math.floor(sim.landProgress * 100)}%</b></div><div class="meter"><i style="width:${sim.landProgress * 100}%"></i></div><p class="detail-note">Rafi is removing the block vegetation. The planting grid appears when work is complete.</p>`;
+    } else {
+      content += `<div class="detail-row"><span>Planting positions</span><b>${sim.palms.length + sim.reservedSlots.size} / 16</b></div><p class="detail-note">Four evenly spaced rows are ready. Choose PLANT, then tap an open marker.</p><div class="detail-actions"><button data-plant>PLANT A SEEDLING</button></div>`;
+      if (sim.palms.length > 0) content += `<div class="detail-actions"><button data-maint="FERTILIZE">FERTILIZE BLOCK · 5</button><button data-maint="TREAT">TREAT BLOCK · 2</button></div>`;
+    }
+    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>BLOCK 01 · ${state.toUpperCase()}</h2><p class="detail-sub">${sim.landState === LAND.PREPARED ? 'Surveyed 4 × 4 planting grid' : 'Survey stakes · east of camp'}</p>${content}`;
+    panel.querySelector('[data-clear]')?.addEventListener('click', () => {
+      if (sim.clearField({ x: 8, z: 10 })) setAction('');
+    });
+    panel.querySelector('[data-plant]')?.addEventListener('click', () => { setAction('PLANT'); toast('Tap an open marker in the prepared grid.', 'info'); });
+    panel.querySelectorAll('[data-maint]').forEach((button) => button.addEventListener('click', () => sim.maintenance(button.dataset.maint, 'block', 'block_01')));
   } else if (selection.kind === 'shelter') {
     const shelter = sim.shelter;
-    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>STARTER SHELTER</h2><p class="detail-sub">${shelter.complete ? 'Complete · field office established' : `Under construction · ${Math.floor(shelter.progress * 100)}%`}</p><div class="detail-row"><span>Construction</span><b>${Math.floor(shelter.progress * 100)}%</b></div><div class="meter"><i style="width:${shelter.progress * 100}%"></i></div>`;
+    if (!shelter) return closeDetails();
+    const percent = Math.floor(shelter.progress * 100);
+    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>STARTER SHELTER</h2><p class="detail-sub">${shelter.complete ? 'Complete · field office established' : `Under construction · ${percent}%`}</p><div class="detail-row"><span>Construction</span><b>${percent}%</b></div><div class="meter"><i style="width:${percent}%"></i></div>`;
   } else {
-    const reserved = sim.reservedSlots.size;
-    const planted = sim.palms.length;
-    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>BLOCK MANAGEMENT</h2><p class="detail-sub">Compact estate report · Prototype 0.1</p><div class="detail-row"><span>Land</span><b>${['Forest', 'Clearing', 'Cleared', 'Preparing', 'Prepared'][sim.landState]}</b></div><div class="detail-row"><span>Rows prepared</span><b>${sim.landState === LAND.PREPARED ? '4 / 4' : '—'}</b></div><div class="detail-row"><span>Planted</span><b>${planted} / 16</b></div><div class="detail-row"><span>Orders queued</span><b>${reserved}</b></div><div class="detail-row"><span>Day / speed</span><b>${sim.day} · ${sim.speed}×</b></div>`;
+    const queued = sim.tasks.filter((task) => task.status === 'QUEUED').length;
+    const state = ['Forest', 'Clearing', 'Prepared'][sim.landState];
+    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>BLOCK MANAGEMENT</h2><p class="detail-sub">Compact estate report · Prototype 0.2</p><div class="detail-row"><span>Land</span><b>${state}</b></div><div class="detail-row"><span>Planting grid</span><b>${sim.landState === LAND.PREPARED ? '4 × 4 ready' : 'Not prepared'}</b></div><div class="detail-row"><span>Palms</span><b>${sim.palms.length} / 16</b></div><div class="detail-row"><span>Open worker orders</span><b>${queued + (sim.activeTask ? 1 : 0)}</b></div><div class="detail-row"><span>Day / speed</span><b>${sim.day} · ${sim.speed}×</b></div>`;
   }
   panel.querySelector('.detail-close')?.addEventListener('click', closeDetails);
   panel.querySelector('[data-focus]')?.addEventListener('click', () => { focus.set(sim.worker.x, 0, sim.worker.z); });
@@ -120,8 +166,7 @@ function updateHud() {
   document.querySelector('#progress-label').textContent = progress.label;
   document.querySelector('#progress-value').textContent = `${progress.value}%`;
   document.querySelector('#progress-fill').style.width = `${progress.value}%`;
-  if (selection?.kind === 'palm') renderDetails();
-  else if (selection?.kind === 'shelter') renderDetails();
+  if (selection) renderDetails();
 }
 
 function handleAction(action) {
@@ -133,16 +178,15 @@ function handleAction(action) {
     return;
   }
   if (action === 'LAND') {
-    if (sim.landState === LAND.CLEARED) { setAction(''); sim.prepareRows(); return; }
-    if (sim.landState === LAND.FOREST) {
-      if (!sim.shelter?.complete) return toast('Complete the starter shelter first.', 'warning');
+    showDetails('zone', sim.zone);
+    if (sim.landState === LAND.FOREST && sim.shelter?.complete) {
       setAction(activeAction === action ? '' : action);
-      if (activeAction) toast('Tap inside the four survey stakes.', 'info');
+      if (activeAction) toast('Tap inside the surveyed block or use CLEAR LAND in its panel.', 'info');
       return;
     }
     setAction('');
-    if (sim.landState === LAND.CLEARING) toast('The crew is already clearing this block.', 'info');
-    else if (sim.landState === LAND.PREPARING) toast('The worker is laying out the rows.', 'info');
+    if (sim.landState === LAND.FOREST) toast('Complete the starter shelter first.', 'warning');
+    else if (sim.landState === LAND.CLEARING) toast('The crew is already clearing this block.', 'info');
     return;
   }
   if (action === 'PLANT') {
@@ -173,7 +217,8 @@ function handleWorldClick(point) {
     return;
   }
   if (activeAction === 'LAND') {
-    if (sim.clearField(point)) setAction('');
+    if (sim.clearField(point)) { setAction(''); showDetails('zone', sim.zone); }
+    else if (sim.insideField(point)) showDetails('zone', sim.zone);
     return;
   }
   if (activeAction === 'PLANT') {
@@ -187,13 +232,14 @@ function handleWorldClick(point) {
   }
   let nearestPalm = null, palmDist = 1.9;
   for (const palm of sim.palms) {
-    const d = Math.hypot(point.x - palm.x, point.z - palm.z);
+    const d = Math.hypot(point.x - palm.position.x, point.z - palm.position.z);
     if (d < palmDist) { nearestPalm = palm; palmDist = d; }
   }
   if (nearestPalm) { setAction(''); showDetails('palm', nearestPalm); return; }
-  if (sim.shelter && Math.hypot(point.x - sim.shelter.x, point.z - sim.shelter.z) < 4) {
+  if (sim.shelter && Math.hypot(point.x - sim.shelter.position.x, point.z - sim.shelter.position.z) < 4) {
     setAction(''); showDetails('shelter', sim.shelter); return;
   }
+  if (sim.insideField(point)) { setAction(''); showDetails('zone', sim.zone); return; }
   setAction(''); closeDetails();
 }
 
@@ -275,7 +321,7 @@ function frame(now) {
   lastTime = now; clock += delta;
   sim.update(delta);
   updateCamera();
-  syncWorld(world, sim, clock);
+  syncWorld(world, sim, clock, selection);
   uiTime += delta;
   if (uiTime > .12) { uiTime = 0; updateHud(); }
   renderer.render(scene, camera);

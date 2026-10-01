@@ -18,6 +18,11 @@ var field_soil: MeshInstance3D
 var preview_root: Node3D
 var _slot_materials: Dictionary = {}
 var _preview_material: StandardMaterial3D
+var selection_root: Node3D
+var selection_ring: MeshInstance3D
+var selection_wash: MeshInstance3D
+var selection_zone: Node3D
+var _selection_material: StandardMaterial3D
 var preparation_progress: float = 0.0
 var _preview_valid: Variant = null
 var _built := false
@@ -34,6 +39,7 @@ func build_world(planting_slots: Array[Vector3]) -> void:
 	_build_props()
 	_build_planting_markers(planting_slots)
 	_build_placement_preview()
+	_build_selection_marker()
 
 
 func _build_terrain() -> void:
@@ -462,15 +468,13 @@ func set_land_progress(progress: float, land_state: int) -> void:
 
 
 func set_preparation_progress(progress: float, land_state: int) -> void:
+	# Row markers are revealed as part of clearing completion; there is no extra prep job.
 	preparation_progress = progress
-	var preparing := land_state == 3 or land_state == 4
-	for row in range(row_lines.size()):
-		row_lines[row].visible = (
-			land_state == 4
-			or (preparing and progress >= float(row + 1) / float(row_lines.size() + 1))
-		)
+	var prepared := land_state == 2
+	for line in row_lines:
+		line.visible = prepared
 	for marker in planting_markers:
-		marker.visible = land_state == 4 or (preparing and progress >= 0.45)
+		marker.visible = prepared
 
 
 func set_slot_state(slot_index: int, state: String) -> void:
@@ -494,10 +498,88 @@ func set_planting_state(reserved: Dictionary, planted: Dictionary, land_state: i
 			set_slot_state(index, "planted")
 		elif reserved.has(index):
 			set_slot_state(index, "queued")
-		elif land_state == 4:
+		elif land_state == 2:
 			set_slot_state(index, "open")
 		else:
-			planting_markers[index].visible = land_state == 3 and preparation_progress >= 0.45
+			planting_markers[index].visible = false
+
+
+func _build_selection_marker() -> void:
+	selection_root = Node3D.new()
+	selection_root.name = "SelectedObjectHighlight"
+	selection_root.visible = false
+	_selection_material = StandardMaterial3D.new()
+	_selection_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_selection_material.albedo_color = Color(0.91, 0.76, 0.38, 0.95)
+	_selection_material.emission_enabled = true
+	_selection_material.emission = Color(0.72, 0.52, 0.18)
+	selection_ring = MeshInstance3D.new()
+	selection_ring.name = "SelectionRing"
+	var ring_mesh := TorusMesh.new()
+	ring_mesh.inner_radius = 0.94
+	ring_mesh.outer_radius = 1.0
+	ring_mesh.rings = 8
+	ring_mesh.ring_segments = 36
+	selection_ring.mesh = ring_mesh
+	selection_ring.position.y = 0.09
+	selection_ring.material_override = _selection_material
+	selection_root.add_child(selection_ring)
+
+	selection_wash = MeshInstance3D.new()
+	selection_wash.name = "ZoneSelectionWash"
+	var wash_mesh := PlaneMesh.new()
+	wash_mesh.size = FIELD_SIZE
+	selection_wash.mesh = wash_mesh
+	selection_wash.position.y = 0.025
+	var wash_material := StandardMaterial3D.new()
+	wash_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	wash_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	wash_material.albedo_color = Color(0.86, 0.70, 0.34, 0.10)
+	wash_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	selection_wash.material_override = wash_material
+	selection_root.add_child(selection_wash)
+
+	selection_zone = Node3D.new()
+	selection_zone.name = "ZoneSelectionOutline"
+	selection_root.add_child(selection_zone)
+	var edges := [
+		{"size": Vector3(FIELD_SIZE.x, 0.045, 0.075), "position": Vector3(0, 0.10, -FIELD_SIZE.y * 0.5)},
+		{"size": Vector3(FIELD_SIZE.x, 0.045, 0.075), "position": Vector3(0, 0.10, FIELD_SIZE.y * 0.5)},
+		{"size": Vector3(0.075, 0.045, FIELD_SIZE.y), "position": Vector3(-FIELD_SIZE.x * 0.5, 0.10, 0)},
+		{"size": Vector3(0.075, 0.045, FIELD_SIZE.y), "position": Vector3(FIELD_SIZE.x * 0.5, 0.10, 0)}
+	]
+	for edge in edges:
+		var segment := MeshInstance3D.new()
+		var edge_mesh := BoxMesh.new()
+		edge_mesh.size = edge.size
+		segment.mesh = edge_mesh
+		segment.position = edge.position
+		segment.material_override = _selection_material
+		selection_zone.add_child(segment)
+	add_child(selection_root)
+	selection_wash.visible = false
+	selection_zone.visible = false
+
+
+func set_selection(kind: String, point: Vector3 = Vector3.ZERO, radius: float = 1.0) -> void:
+	if selection_root == null:
+		return
+	if kind.is_empty():
+		selection_root.visible = false
+		return
+	selection_root.visible = true
+	selection_root.position = Vector3(point.x, 0.0, point.z)
+	var is_zone := kind == "zone"
+	selection_ring.visible = not is_zone
+	selection_wash.visible = is_zone
+	selection_zone.visible = is_zone
+	if not is_zone:
+		selection_ring.scale = Vector3.ONE * maxf(0.55, radius)
+
+
+func clear_selection() -> void:
+	if selection_root != null:
+		selection_root.visible = false
 
 
 func set_build_preview(point: Vector3, valid: bool, enabled: bool) -> void:

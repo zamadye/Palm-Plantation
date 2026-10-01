@@ -135,10 +135,10 @@ static func create_palm(growth_stage: int) -> Node3D:
 			crown_radius = 0.88
 			leaf_count = 6
 		2:
-			trunk_height = 1.65
-			trunk_radius = 0.13
-			crown_radius = 1.38
-			leaf_count = 7
+			trunk_height = 2.8
+			trunk_radius = 0.18
+			crown_radius = 1.95
+			leaf_count = 8
 		_:
 			trunk_height = 2.8
 			trunk_radius = 0.18
@@ -311,14 +311,25 @@ static func animate_person(root: Node3D, state_name: String, clock: float) -> vo
 		if right_leg != null:
 			right_leg.rotation.x = -swing
 	elif state_name in ["CLEARING", "PLANTING", "BUILDING", "FERTILIZING", "TREATING"]:
+		var work_cycle := sin(clock * (6.2 if state_name == "CLEARING" else 4.4))
 		if right_arm != null:
-			right_arm.rotation.x = -0.55 + sin(clock * 5.8) * 0.48
+			match state_name:
+				"CLEARING":
+					right_arm.rotation.x = -0.72 + work_cycle * 0.48
+				"PLANTING":
+					right_arm.rotation.x = 0.72 - work_cycle * 0.10
+				"FERTILIZING":
+					right_arm.rotation.x = -0.78 + work_cycle * 0.12
+				"TREATING":
+					right_arm.rotation.x = -0.40 + work_cycle * 0.14
+				_:
+					right_arm.rotation.x = -0.55 + work_cycle * 0.40
 		if left_arm != null:
-			left_arm.rotation.x = 0.14 + sin(clock * 5.8 + 0.6) * 0.18
+			left_arm.rotation.x = (0.60 + work_cycle * 0.08) if state_name == "PLANTING" else 0.14 + work_cycle * 0.18
 		if left_leg != null:
-			left_leg.rotation.x = 0.0
+			left_leg.rotation.x = -0.16 if state_name == "PLANTING" else 0.0
 		if right_leg != null:
-			right_leg.rotation.x = 0.0
+			right_leg.rotation.x = -0.12 if state_name == "PLANTING" else 0.0
 	else:
 		if left_arm != null:
 			left_arm.rotation.x = sin(clock * 1.7) * 0.035

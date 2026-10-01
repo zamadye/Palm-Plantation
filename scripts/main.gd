@@ -2,7 +2,7 @@ extends Node3D
 
 ## Input and rendering coordinator. Simulation state remains in PlantationSimulation records.
 const VisualFactory = preload("res://scripts/world/visual_factory.gd")
-enum LandState { FOREST, CLEARING, CLEARED, PREPARING, PREPARED }
+enum LandState { FOREST, CLEARING, PREPARED }
 
 @onready var world: PlantationWorld = $PlantationWorld
 @onready var simulation: PlantationSimulation = $PlantationSimulation
@@ -35,6 +35,7 @@ func _ready() -> void:
 	ui.action_selected.connect(_on_action_selected)
 	ui.speed_selected.connect(simulation.set_game_speed)
 	ui.maintenance_requested.connect(_on_maintenance_requested)
+	ui.land_clear_requested.connect(_on_land_clear_requested)
 	ui.selection_closed.connect(_on_selection_closed)
 	simulation.shelter_started.connect(_on_shelter_started)
 	simulation.shelter_completed.connect(_on_shelter_completed)
@@ -85,6 +86,7 @@ func _process(delta: float) -> void:
 	world.set_planting_state(
 		simulation.reserved_slots, simulation.planted_slots, int(simulation.land_state)
 	)
+	_update_selection_highlight()
 	_update_build_preview()
 
 	if _hud_detail_clock >= 0.5:
@@ -138,6 +140,10 @@ func _handle_world_click(screen_position: Vector2) -> void:
 			if simulation.start_land_clearing(point):
 				current_action = ""
 				ui.set_active_action("")
+				ui.show_land_detail()
+			return
+			if simulation.is_inside_clearing(point):
+				ui.show_land_detail()
 			return
 		"PLANT":
 			var slot_index := _nearest_open_slot(point)
@@ -201,7 +207,14 @@ func _select_world_object(point: Vector3) -> void:
 			ui.set_active_action("")
 			ui.show_shelter_detail()
 			return
+
+	if simulation.is_inside_clearing(point):
+		current_action = ""
+		ui.set_active_action("")
+		ui.show_land_detail()
+		return
 	ui.dismiss_details()
+	world.clear_selection()
 
 
 func _on_action_selected(action: String) -> void:
@@ -216,17 +229,18 @@ func _on_action_selected(action: String) -> void:
 			current_action = "BUILD"
 			ui.show_toast("Place the shelter inside the camp clearing west of the road.", "info")
 		"LAND":
-			if simulation.land_state == LandState.CLEARED:
-				simulation.start_row_preparation()
-				current_action = ""
-				ui.set_active_action("")
-				return
 			if simulation.land_state == LandState.FOREST:
+				if simulation.shelter == null or not simulation.shelter.is_complete:
+					current_action = ""
+					ui.set_active_action("")
+					ui.show_toast("Complete the starter shelter before clearing land.", "warning")
+					return
 				current_action = "LAND"
-				ui.show_toast("Tap inside the survey stakes to clear this forest block.", "info")
+				ui.show_toast("Tap inside the survey stakes to clear the forest block.", "info")
 			else:
 				current_action = ""
 				ui.set_active_action("")
+				ui.show_land_detail()
 		"PLANT":
 			if simulation.land_state == LandState.PREPARED:
 				current_action = "PLANT"
@@ -243,6 +257,13 @@ func _on_action_selected(action: String) -> void:
 			ui.show_management()
 
 
+func _on_land_clear_requested() -> void:
+	if simulation.start_land_clearing(simulation.land_zone.position):
+		current_action = ""
+		ui.set_active_action("")
+		ui.show_land_detail()
+
+
 func _on_maintenance_requested(action: String, palm_id: String) -> void:
 	simulation.perform_maintenance(action, palm_id)
 
@@ -250,6 +271,7 @@ func _on_maintenance_requested(action: String, palm_id: String) -> void:
 func _on_selection_closed() -> void:
 	current_action = ""
 	ui.set_active_action("")
+	world.clear_selection()
 
 
 func _on_shelter_started(building) -> void:
@@ -283,6 +305,31 @@ func _on_job_changed() -> void:
 func _sync_palm_views() -> void:
 	for palm in simulation.palms:
 		world.update_palm_visual(palm)
+
+
+func _update_selection_highlight() -> void:
+	if ui == null or ui.selected_kind.is_empty():
+		world.clear_selection()
+		return
+	match ui.selected_kind:
+		"worker":
+			world.set_selection("worker", simulation.worker.position, 0.95)
+		"palm":
+			var palm = simulation.get_palm(ui.selected_id)
+			if palm == null:
+				world.clear_selection()
+				return
+			var radius := 0.72 if int(palm.growth_stage) == 0 else (1.15 if int(palm.growth_stage) == 1 else 2.1)
+			world.set_selection("palm", palm.position, radius)
+		"shelter":
+			if simulation.shelter != null:
+				world.set_selection("shelter", simulation.shelter.position, 3.35)
+			else:
+				world.clear_selection()
+		"land":
+			world.set_selection("zone", simulation.land_zone.position, 1.0)
+		_:
+			world.clear_selection()
 
 
 func _sync_world_state() -> void:

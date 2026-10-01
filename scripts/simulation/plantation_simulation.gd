@@ -6,20 +6,21 @@ const WorkerData = preload("res://scripts/simulation/worker_record.gd")
 const PalmData = preload("res://scripts/simulation/palm_record.gd")
 const BuildingData = preload("res://scripts/simulation/building_record.gd")
 const LandZoneData = preload("res://scripts/simulation/land_zone_record.gd")
+const TaskData = preload("res://scripts/simulation/task_record.gd")
 
 const FIELD_CENTER := Vector3(8.0, 0.0, 10.0)
 const FIELD_SIZE := Vector2(24.0, 18.0)
 const DAY_LENGTH_SECONDS := 3.0
 const CLEARING_DURATION := 12.0
-const PREPARATION_DURATION := 5.0
 const SHELTER_DURATION := 8.0
 const PLANTING_DURATION := 3.0
+const CLEARING_COST := 150
 
 signal resources_changed
 signal phase_changed
 signal land_changed
 signal job_changed
-signal job_progress_changed(job_type: String, progress: float)
+signal job_progress_changed(task_type: String, progress: float)
 signal shelter_started(building)
 signal shelter_completed(building)
 signal palm_planted(palm)
@@ -27,7 +28,7 @@ signal palm_changed(palm)
 signal toast(message: String, kind: String)
 
 ## Land-zone states are independent of their visual representation.
-enum LandState { FOREST, CLEARING, CLEARED, PREPARING, PREPARED }
+enum LandState { FOREST, CLEARING, PREPARED }
 
 var land_zone = LandZoneData.new()
 var land_state: int:
@@ -53,6 +54,7 @@ var player_state: String = "IDLE"
 var worker = null
 var shelter = null
 var palms: Array = []
+var tasks: Array = []
 var planting_slots: Array[Vector3] = []
 var reserved_slots: Dictionary = {}
 var planted_slots: Dictionary = {}
@@ -63,7 +65,7 @@ var resources: Dictionary = {
 var game_speed: float = 2.0
 var game_days_elapsed: float = 0.0
 var day_number: int = 1
-var _job_sequence: int = 0
+var _task_sequence: int = 0
 var _last_progress_milestone: int = -1
 
 
@@ -136,7 +138,7 @@ func start_shelter_construction(point: Vector3) -> bool:
 	shelter.position = Vector3(point.x, 0.0, point.z)
 	resources_changed.emit()
 	shelter_started.emit(shelter)
-	_enqueue_job(_make_job("BUILDING", shelter.position, SHELTER_DURATION, {"building": shelter}))
+	_enqueue_task(_make_task("BUILDING", shelter.position, SHELTER_DURATION, {"building_id": shelter.id}))
 	toast.emit("Shelter site selected. Your crew is on the way.", "success")
 	return true
 
@@ -151,45 +153,42 @@ func start_land_clearing(point: Vector3) -> bool:
 	if not is_inside_clearing(point):
 		toast.emit("Select the marked forest block to clear it.", "warning")
 		return false
+	if int(resources.money) < CLEARING_COST:
+		toast.emit("Land clearing needs $%d for crew and equipment." % CLEARING_COST, "warning")
+		return false
 
+	resources.money -= CLEARING_COST
 	land_state = LandState.CLEARING
 	land_progress = 0.0
-	land_changed.emit()
-	_enqueue_job(_make_job("CLEARING", FIELD_CENTER, CLEARING_DURATION, {}))
-	toast.emit("Land clearing started. Vegetation will recede as the crew works.", "success")
-	return true
-
-
-func start_row_preparation() -> bool:
-	if land_state != LandState.CLEARED:
-		toast.emit("Clear the forest block before preparing planting rows.", "warning")
-		return false
-	land_state = LandState.PREPARING
 	preparation_progress = 0.0
+	resources_changed.emit()
 	land_changed.emit()
-	_enqueue_job(_make_job("PREPARATION", FIELD_CENTER, PREPARATION_DURATION, {}))
-	toast.emit("Preparing the block and laying out planting rows.", "success")
+	_enqueue_task(_make_task("CLEARING", FIELD_CENTER, CLEARING_DURATION, {"zone_id": land_zone.id}))
+	toast.emit("Land clearing started. Vegetation will recede as the crew works.", "success")
 	return true
 
 
 func request_plant(slot_index: int) -> bool:
 	if land_state != LandState.PREPARED:
-		toast.emit("Clear and prepare the block before planting.", "warning")
+		toast.emit("Clear the block before planting.", "warning")
 		return false
 	if slot_index < 0 or slot_index >= planting_slots.size():
 		return false
 	if planted_slots.has(slot_index) or reserved_slots.has(slot_index):
 		toast.emit("That planting point is already occupied or queued.", "info")
 		return false
-	if int(resources.seedlings) <= 0:
-		toast.emit("No seedlings remain.", "warning")
+	if _available_resource("seedlings") < 1:
+		toast.emit("No free seedlings remain.", "warning")
 		return false
 
-	resources.seedlings -= 1
 	reserved_slots[slot_index] = true
-	resources_changed.emit()
 	var target: Vector3 = planting_slots[slot_index]
-	_enqueue_job(_make_job("PLANTING", target, PLANTING_DURATION, {"slot_index": slot_index}))
+	_enqueue_task(
+		_make_task(
+			"PLANTING", target, PLANTING_DURATION,
+			{"slot_index": slot_index, "resource": "seedlings", "cost": 1}
+		)
+	)
 	toast.emit(
 		(
 			"Planting order queued for row %d, position %d."
@@ -200,26 +199,50 @@ func request_plant(slot_index: int) -> bool:
 	return true
 
 
-func perform_maintenance(action: String, palm_id: String) -> bool:
-	var palm = get_palm(palm_id)
-	if palm == null:
-		return false
+func perform_maintenance(action: String, target_id: String) -> bool:
+	var task_type := ""
+	var resource_key := ""
+	var resource_cost := 0
 	if action == "FERTILIZE":
-		if int(resources.fertilizer) < 5:
-			toast.emit("Not enough fertilizer. Need 5 units.", "warning")
-			return false
-		resources.fertilizer -= 5
+		task_type = "FERTILIZING"
+		resource_key = "fertilizer"
+		resource_cost = 5
 	elif action == "TREAT":
-		if int(resources.pesticide) < 2:
-			toast.emit("Not enough pest treatment. Need 2 units.", "warning")
-			return false
-		resources.pesticide -= 2
-	elif action != "INSPECT":
+		task_type = "TREATING"
+		resource_key = "pesticide"
+		resource_cost = 2
+	else:
 		return false
 
-	resources_changed.emit()
-	var job_duration := 2.5 if action != "INSPECT" else 1.5
-	_enqueue_job(_make_job(action, palm.position, job_duration, {"palm_id": palm_id}))
+	var target_type := "palm"
+	var target_position := Vector3.ZERO
+	if target_id == land_zone.id:
+		if land_state != LandState.PREPARED or palms.is_empty():
+			toast.emit("Plant a palm before maintaining the block.", "warning")
+			return false
+		target_type = "block"
+		target_position = FIELD_CENTER
+	else:
+		var palm = get_palm(target_id)
+		if palm == null:
+			return false
+		target_position = palm.position
+
+	if _available_resource(resource_key) < resource_cost:
+		toast.emit("Not enough %s. Need %d units." % [resource_key, resource_cost], "warning")
+		return false
+
+	var payload := {
+		"target_type": target_type,
+		"target_id": target_id,
+		"resource": resource_key,
+		"cost": resource_cost
+	}
+	_enqueue_task(_make_task(task_type, target_position, 2.5, payload))
+	toast.emit(
+		"%s assigned to Rafi." % ("Fertilizing" if task_type == "FERTILIZING" else "Pest treatment"),
+		"success"
+	)
 	return true
 
 
@@ -230,6 +253,27 @@ func get_palm(palm_id: String):
 	return null
 
 
+func get_task(task_id: String):
+	for task in tasks:
+		if task.id == task_id:
+			return task
+	return null
+
+
+func _available_resource(resource_key: String) -> int:
+	return int(resources.get(resource_key, 0)) - _reserved_resource_count(resource_key)
+
+
+func _reserved_resource_count(resource_key: String) -> int:
+	var reserved := 0
+	for task in tasks:
+		if task.status == TaskData.Status.COMPLETED or task.status == TaskData.Status.CANCELLED:
+			continue
+		if str(task.payload.get("resource", "")) == resource_key:
+			reserved += int(task.payload.get("cost", 0))
+	return reserved
+
+
 func set_game_speed(speed: float) -> void:
 	game_speed = clampf(speed, 1.0, 6.0)
 	resources_changed.emit()
@@ -238,16 +282,11 @@ func set_game_speed(speed: float) -> void:
 func get_phase_title() -> String:
 	if shelter == null:
 		return "01  ·  ESTABLISH A BASE"
-	match land_state:
-		LandState.FOREST, LandState.CLEARING:
-			return "02  ·  OPEN THE LAND"
-		LandState.CLEARED, LandState.PREPARING:
-			return "03  ·  PREPARE PLANTING ROWS"
-		LandState.PREPARED:
-			if palms.is_empty():
-				return "04  ·  PLANT THE FIRST ROWS"
-			return "05  ·  GROW & MAINTAIN THE BLOCK"
-	return "PLANTATION"
+	if land_state == LandState.FOREST or land_state == LandState.CLEARING:
+		return "02  ·  OPEN THE LAND"
+	if palms.is_empty():
+		return "03  ·  PLANT THE FIRST ROWS"
+	return "04  ·  GROW & MAINTAIN THE BLOCK"
 
 
 func get_instruction() -> String:
@@ -255,17 +294,13 @@ func get_instruction() -> String:
 		return "BUILD: choose a site in the camp clearing."
 	match land_state:
 		LandState.FOREST:
-			return "LAND: select the forest plot east of the camp."
+			return "LAND: select the forest plot east of camp. Clearing uses $%d." % CLEARING_COST
 		LandState.CLEARING:
 			return "Your worker is clearing vegetation…"
-		LandState.CLEARED:
-			return "LAND: prepare the block to reveal orderly planting rows."
-		LandState.PREPARING:
-			return "Your worker is marking planting positions…"
 		LandState.PREPARED:
-			if palms.size() < 4:
-				return "PLANT: tap an open marker to queue a seedling."
-			return "Select a palm to inspect, fertilize, or treat pests."
+			if palms.is_empty():
+				return "PLANT: tap an open marker in the prepared grid."
+			return "Select a palm to send the worker to fertilize or treat pests."
 	return "Watch the plantation grow."
 
 
@@ -274,16 +309,12 @@ func get_progress_text() -> String:
 		return "SHELTER  ·  %d%%" % _milestone_percent(shelter.construction_progress)
 	if land_state == LandState.CLEARING:
 		return "CLEARING  ·  %d%%" % _milestone_percent(land_progress)
-	if land_state == LandState.PREPARING:
-		return "ROWS  ·  %d%%" % _milestone_percent(preparation_progress)
 	if (
 		worker != null
 		and worker.state != WorkerData.State.IDLE
 		and worker.state != WorkerData.State.WALKING
 	):
-		return (
-			"%s  ·  %d%%" % [worker.job_type.capitalize(), _milestone_percent(worker.job_progress)]
-		)
+		return "%s  ·  %d%%" % [worker.job_type.capitalize(), _milestone_percent(worker.job_progress)]
 	return "DAY %02d  ·  GAME SPEED x%.0f" % [day_number, game_speed]
 
 
@@ -293,37 +324,40 @@ func _milestone_percent(progress: float) -> int:
 	return int(floor(progress * 4.0)) * 25
 
 
-func _make_job(
-	job_type: String, target: Vector3, duration: float, payload: Dictionary
-) -> Dictionary:
-	_job_sequence += 1
-	return {
-		"id": "job_%03d" % _job_sequence,
-		"type": job_type,
-		"target": Vector3(target.x, 0.0, target.z),
-		"duration": duration,
-		"elapsed": 0.0,
-		"progress": 0.0,
-		"payload": payload
-	}
+func _make_task(task_type: String, target: Vector3, duration: float, payload: Dictionary):
+	_task_sequence += 1
+	var task = TaskData.new()
+	task.id = "task_%03d" % _task_sequence
+	task.task_type = task_type
+	task.target = Vector3(target.x, 0.0, target.z)
+	task.assigned_worker = ""
+	task.duration = duration
+	task.progress = 0.0
+	task.status = TaskData.Status.QUEUED
+	task.elapsed = 0.0
+	task.payload = payload.duplicate(true)
+	return task
 
 
-func _enqueue_job(job: Dictionary) -> void:
-	if worker.active_job.is_empty():
-		_assign_job(job)
+func _enqueue_task(task) -> void:
+	tasks.append(task)
+	if worker.active_task == null and worker.state == WorkerData.State.IDLE:
+		_assign_task(task)
 	else:
-		worker.job_queue.append(job)
+		worker.task_queue.append(task)
 	job_changed.emit()
 
 
-func _assign_job(job: Dictionary) -> void:
-	worker.active_job = job
-	worker.destination = job.target
-	worker.job_type = job.type
+func _assign_task(task) -> void:
+	worker.active_task = task
+	task.assigned_worker = worker.id
+	task.status = TaskData.Status.ASSIGNED
+	worker.destination = task.target
+	worker.job_type = task.task_type
 	worker.job_progress = 0.0
 	worker.time_in_state = 0.0
 	worker.state = WorkerData.State.WALKING
-	player_destination = job.target
+	player_destination = task.target
 	player_state = "WALKING"
 	_last_progress_milestone = -1
 	job_changed.emit()
@@ -331,53 +365,49 @@ func _assign_job(job: Dictionary) -> void:
 
 func _update_worker(delta: float, scaled_delta: float) -> void:
 	worker.time_in_state += delta
-	if worker.active_job.is_empty():
-		if not worker.job_queue.is_empty():
-			var next_job: Dictionary = worker.job_queue.pop_front()
-			_assign_job(next_job)
+	if worker.active_task == null:
+		if not worker.task_queue.is_empty():
+			var next_task = worker.task_queue.pop_front()
+			_assign_task(next_task)
 		else:
 			worker.state = WorkerData.State.IDLE
 			worker.job_type = ""
 			worker.job_progress = 0.0
 		return
 
+	var task = worker.active_task
 	if worker.state == WorkerData.State.WALKING:
 		var offset: Vector3 = worker.destination - worker.position
 		offset.y = 0.0
 		if offset.length() <= 0.24:
 			worker.position = worker.destination
-			worker.state = _state_for_job(worker.active_job.type)
+			worker.state = _state_for_task(task.task_type)
 			worker.time_in_state = 0.0
-			player_state = worker.active_job.type
+			task.status = TaskData.Status.IN_PROGRESS
+			player_state = task.task_type
 			job_changed.emit()
 		else:
-			worker.position += (
-				offset.normalized() * minf(worker.walk_speed * delta, offset.length())
-			)
+			worker.position += offset.normalized() * minf(worker.walk_speed * delta, offset.length())
 			worker.position.y = 0.0
 		return
 
-	worker.active_job.elapsed += scaled_delta
-	var duration: float = maxf(0.01, float(worker.active_job.duration))
-	worker.active_job.progress = clampf(worker.active_job.elapsed / duration, 0.0, 1.0)
-	worker.job_progress = worker.active_job.progress
-	var job_type: String = worker.active_job.type
-	if job_type == "BUILDING" and shelter != null:
-		shelter.construction_progress = worker.job_progress
-	elif job_type == "CLEARING":
-		land_progress = worker.job_progress
-	elif job_type == "PREPARATION":
-		preparation_progress = worker.job_progress
+	task.elapsed += scaled_delta
+	task.progress = clampf(task.elapsed / maxf(0.01, task.duration), 0.0, 1.0)
+	worker.job_progress = task.progress
+	if task.task_type == "BUILDING" and shelter != null:
+		shelter.construction_progress = task.progress
+	elif task.task_type == "CLEARING":
+		land_progress = task.progress
 
-	var milestone := int(floor(worker.job_progress * 4.0))
+	var milestone := int(floor(task.progress * 4.0))
 	if milestone != _last_progress_milestone:
 		_last_progress_milestone = milestone
-		job_progress_changed.emit(job_type, worker.job_progress)
-		if job_type == "BUILDING" or job_type == "CLEARING" or job_type == "PREPARATION":
+		job_progress_changed.emit(task.task_type, task.progress)
+		if task.task_type == "BUILDING" or task.task_type == "CLEARING":
 			land_changed.emit()
 
-	if worker.job_progress >= 1.0:
-		_finish_job(worker.active_job)
+	if task.progress >= 1.0:
+		_finish_task(task)
 
 
 func _update_player(delta: float) -> void:
@@ -385,36 +415,32 @@ func _update_player(delta: float) -> void:
 	offset.y = 0.0
 	if offset.length() <= 0.2:
 		player_position = player_destination
-		if worker.active_job.is_empty() or worker.state == WorkerData.State.WALKING:
+		if worker.active_task == null or worker.state == WorkerData.State.WALKING:
 			player_state = "IDLE"
 		return
 	player_position += offset.normalized() * minf(4.4 * delta, offset.length())
 	player_position.y = 0.0
 
 
-func _state_for_job(job_type: String):
-	match job_type:
+func _state_for_task(task_type: String):
+	match task_type:
 		"BUILDING":
 			return WorkerData.State.BUILDING
 		"CLEARING":
 			return WorkerData.State.CLEARING
-		"PREPARATION":
-			return WorkerData.State.CLEARING
 		"PLANTING":
 			return WorkerData.State.PLANTING
-		"FERTILIZE":
+		"FERTILIZING":
 			return WorkerData.State.FERTILIZING
-		"INSPECT":
-			return WorkerData.State.INSPECTING
-		"TREAT":
+		"TREATING":
 			return WorkerData.State.TREATING
 	return WorkerData.State.IDLE
 
 
-func _finish_job(job: Dictionary) -> void:
-	var job_type: String = job.type
-	var payload: Dictionary = job.payload
-	match job_type:
+func _finish_task(task) -> void:
+	var task_type: String = task.task_type
+	var payload: Dictionary = task.payload
+	match task_type:
 		"BUILDING":
 			if shelter != null:
 				shelter.construction_progress = 1.0
@@ -422,17 +448,15 @@ func _finish_job(job: Dictionary) -> void:
 				shelter_completed.emit(shelter)
 				toast.emit("Starter shelter complete. The plantation can now expand.", "success")
 		"CLEARING":
-			land_state = LandState.CLEARED
-			land_progress = 1.0
-			toast.emit("Forest cleared. Prepare the block to lay out planting rows.", "success")
-		"PREPARATION":
 			land_state = LandState.PREPARED
+			land_progress = 1.0
 			preparation_progress = 1.0
-			toast.emit("Planting rows are ready. Select PLANT to place seedlings.", "success")
+			toast.emit("Land prepared. Four orderly planting rows are now marked.", "success")
 		"PLANTING":
-			var slot_index: int = int(payload.slot_index)
+			var slot_index := int(payload.get("slot_index", -1))
 			reserved_slots.erase(slot_index)
 			planted_slots[slot_index] = true
+			resources.seedlings = max(0, int(resources.seedlings) - 1)
 			var palm = PalmData.new()
 			palm.id = "palm_%02d" % (slot_index + 1)
 			palm.slot_index = slot_index
@@ -440,42 +464,49 @@ func _finish_job(job: Dictionary) -> void:
 			palms.append(palm)
 			palm_planted.emit(palm)
 			toast.emit(
-				(
-					"Seedling planted in row %d, position %d."
-					% [int(slot_index / 4) + 1, (slot_index % 4) + 1]
-				),
+				"Seedling planted in row %d, position %d." % [int(slot_index / 4) + 1, (slot_index % 4) + 1],
 				"success"
 			)
-		"FERTILIZE", "TREAT", "INSPECT":
-			var palm = get_palm(str(payload.palm_id))
-			if palm != null:
-				if job_type == "FERTILIZE":
-					palm.fertilizer_state = 100.0
+		"FERTILIZING", "TREATING":
+			var resource_key: String = str(payload.get("resource", ""))
+			var cost := int(payload.get("cost", 0))
+			resources[resource_key] = max(0, int(resources.get(resource_key, 0)) - cost)
+			var target_palms: Array = []
+			if str(payload.get("target_type", "palm")) == "block":
+				for palm in palms:
+					if land_zone.contains(palm.position):
+						target_palms.append(palm)
+			else:
+				var target_palm = get_palm(str(payload.get("target_id", "")))
+				if target_palm != null:
+					target_palms.append(target_palm)
+			for palm in target_palms:
+				if task_type == "FERTILIZING":
+					palm.fertilizer = 100.0
 					palm.health = minf(100.0, palm.health + 10.0)
-					toast.emit("Palm fertilized. Health +10.", "success")
-				elif job_type == "TREAT":
-					palm.pest_state = maxf(0.0, palm.pest_state - 25.0)
-					palm.health = minf(100.0, palm.health + 10.0)
-					toast.emit("Pest treatment complete. Health +10.", "success")
 				else:
-				palm.inspected = true
-				palm.last_inspected_day = day_number
-				toast.emit(
-					"Inspection complete: %s, %.0f%% health." % [palm.stage_name(), palm.health],
-					"success"
-				)
+					palm.pest_risk = maxf(0.0, palm.pest_risk - 25.0)
+					palm.health = minf(100.0, palm.health + 10.0)
 				palm_changed.emit(palm)
+			toast.emit(
+				"Fertilizing complete. Health +10." if task_type == "FERTILIZING" else "Pest treatment complete. Health +10.",
+				"success"
+			)
 
+	task.progress = 1.0
+	task.status = TaskData.Status.COMPLETED
 	worker.experience += 1.0
-	worker.active_job = {}
+	worker.active_task = null
 	worker.job_type = ""
 	worker.job_progress = 0.0
 	worker.state = WorkerData.State.IDLE
 	worker.time_in_state = 0.0
 	player_state = "IDLE"
-	if worker.job_queue.is_empty():
+	if worker.task_queue.is_empty():
 		player_destination = player_position
-	if job_type == "BUILDING" or job_type == "CLEARING" or job_type == "PREPARATION":
+	if task_type == "PLANTING" or task_type == "FERTILIZING" or task_type == "TREATING":
+		resources_changed.emit()
+	if task_type == "BUILDING" or task_type == "CLEARING":
 		land_changed.emit()
 	phase_changed.emit()
 	job_changed.emit()
@@ -486,15 +517,13 @@ func _advance_growth(day_delta: float) -> void:
 		return
 	for palm in palms:
 		var previous_stage: int = palm.growth_stage
-		palm.planting_age_days += day_delta
-		palm.fertilizer_state = maxf(0.0, palm.fertilizer_state - 0.55 * day_delta)
+		palm.age += day_delta
+		palm.fertilizer = maxf(0.0, palm.fertilizer - 0.55 * day_delta)
 		palm.health = maxf(0.0, palm.health - 0.28 * day_delta)
-		palm.pest_state = minf(100.0, palm.pest_state + 0.40 * day_delta)
-		if palm.planting_age_days >= 45.0:
+		palm.pest_risk = minf(100.0, palm.pest_risk + 0.40 * day_delta)
+		if palm.age >= 45.0:
 			palm.growth_stage = PalmData.GrowthStage.MATURE
-		elif palm.planting_age_days >= 22.0:
-			palm.growth_stage = PalmData.GrowthStage.DEVELOPING
-		elif palm.planting_age_days >= 8.0:
+		elif palm.age >= 8.0:
 			palm.growth_stage = PalmData.GrowthStage.YOUNG
 		else:
 			palm.growth_stage = PalmData.GrowthStage.SEEDLING

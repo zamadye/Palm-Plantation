@@ -2,7 +2,7 @@ extends RefCounted
 class_name LandZoneRecord
 
 ## Data-only plantation block / clearing-zone state. Its mesh and tree instances are view-only.
-enum State { FOREST, CLEARING, CLEARED, PREPARING, PREPARED }
+enum State { FOREST, CLEARING, PREPARED }
 
 var id: String = "block_01"
 var position: Vector3 = Vector3(8.0, 0.0, 10.0)

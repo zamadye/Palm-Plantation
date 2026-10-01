@@ -4,6 +4,10 @@ A compact Godot 4 strategy/management vertical slice. The scene is an elevated, 
 
 **temporary camp → starter shelter → clear forest → prepare a 4 × 4 grid → plant → accelerate growth → maintain → mature fruit → harvest FFB → collect → sell for revenue**
 
+## Project planning and status
+
+The authoritative roadmap, design, architecture, QA gates, and current audit status live in [`PROJECT_STATUS.md`](PROJECT_STATUS.md) and the [`docs/`](docs/) planning set. The README remains the quick-start and implementation overview; consult those documents before interpreting prototype values or proposing gameplay work.
+
 ## Run
 
 Open this folder as a project in **Godot 4.3 or newer** and run `scenes/main/main.tscn` (or press F6/F5 in the editor). The project uses Godot's Mobile renderer and landscape layout. No plugins or downloaded asset packs are required.

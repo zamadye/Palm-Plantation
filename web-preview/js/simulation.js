@@ -286,6 +286,7 @@ export class PlantationSimulation {
 
   phaseInfo() {
     if (!this.shelter) return ['01 · ESTABLISH A BASE', 'Build the starter shelter', 'Choose a clear spot in camp. Your crew will build it in stages.'];
+    if (!this.shelter.complete) return ['01 · ESTABLISH A BASE', 'Build the starter shelter', 'Rafi is constructing the field base.'];
     if (this.landState === LAND.FOREST || this.landState === LAND.CLEARING) return ['02 · OPEN THE LAND', 'Clear the surveyed forest block', 'Select the marked block east of camp to begin clearing.'];
     if (!this.palms.length) return ['03 · PLANT THE FIRST ROWS', 'Plant your first seedlings', 'Tap an open row marker to assign the worker.'];
     return ['04 · GROW & MAINTAIN', 'Keep the block healthy', 'Select a palm to fertilize or treat pests.'];

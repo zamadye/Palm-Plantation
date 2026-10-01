@@ -280,7 +280,7 @@ func set_game_speed(speed: float) -> void:
 
 
 func get_phase_title() -> String:
-	if shelter == null:
+	if shelter == null or not shelter.is_complete:
 		return "01  ·  ESTABLISH A BASE"
 	if land_state == LandState.FOREST or land_state == LandState.CLEARING:
 		return "02  ·  OPEN THE LAND"
@@ -292,6 +292,8 @@ func get_phase_title() -> String:
 func get_instruction() -> String:
 	if shelter == null:
 		return "BUILD: choose a site in the camp clearing."
+	if not shelter.is_complete:
+		return "Your worker is building the starter shelter…"
 	match land_state:
 		LandState.FOREST:
 			return "LAND: select the forest plot east of camp. Clearing uses $%d." % CLEARING_COST

@@ -2,3 +2,5 @@
 .godot/
 export.cfg
 /build/
+Godot_v4.3-stable_linux.x86_64
+*.x86_64

@@ -29,17 +29,17 @@ The branch baseline under review is `e6c3ef39512573c2eb2ee481bbdc260b1a7051c7`. 
 | ID | Task | Status | Completion evidence |
 |---|---|---|---|
 | M0-01 | Review and accept/revise the roadmap, eight gameplay layers, bounded launch scope, architecture, and no-scope-growth rule. | **COMPLETE** | User instructed development to start following this roadmap; work proceeds under the documented scope unless revised. |
-| M0-02 | Run a clean Godot 4.3+ import and launch `scenes/main/main.tscn`; capture engine output. | **BLOCKED** | No Godot runtime is installed. Official release-asset download attempts fail at the asset CDN in this environment, and system package installation is unavailable. Complete when the exact command exits 0 with no script/runtime errors on a clean checkout. |
-| M0-03 | Add a repository-backed, repeatable native test command and document its setup. | **NOT STARTED** | A clean checkout can run the same tests without relying on an untracked local script or parser environment. |
+| M0-02 | Run a clean Godot 4.3+ import and launch `scenes/main/main.tscn`; capture engine output. | **IN PROGRESS** | A clean-copy editor import passes with Godot 4.3 and no script errors. Headless main-scene launch reports `mesh_get_surface_count` null errors from the Dummy renderer (reproduced with a standalone BoxMesh); a real rendering/display run is still required. |
+| M0-03 | Add a repository-backed, repeatable native test command and document its setup. | **COMPLETE** | `tests/godot/simulation_acceptance.gd` passes 83 assertions on a clean project copy using the Godot 4.3 binary provided in the branch. README/QA instructions record the command. |
 | M0-04 | Choose and record minimum mobile device/OS, landscape resolution, and profiling procedure. | **NOT STARTED** | Device/build IDs and baseline test procedure recorded; no device is assumed from the current project setting alone. |
 
 ## M1 — Estate establishment (existing code; native validation debt)
 
 | ID | Task | Status | Completion evidence |
 |---|---|---|---|
-| M1-01 | Exercise shelter placement, invalid sites, prerequisites, construction, and one-time costs in native Godot. | **BLOCKED** | Fresh-session test proves valid placement succeeds; invalid placement and repeat request change neither balance nor building count; no engine errors. |
-| M1-02 | Exercise clearing prerequisites, exactly-once charge, progress, prepared state, and repeat/invalid requests. | **BLOCKED** | Native integration test covers before-shelter, valid clear, duplicate clear, insufficient cash, and final prepared state. |
-| M1-03 | Exercise the 4 × 4 planting grid, all 16 slots, reservations, resource consumption, and invalid indices. | **NOT STARTED** | Automated native test proves unique slot/palm IDs, exactly one seedling consumed per completed plant, and no duplicate/negative inventory. |
+| M1-01 | Exercise shelter placement, invalid sites, prerequisites, construction, and one-time costs in native Godot. | **COMPLETE** | `tests/godot/simulation_acceptance.gd` verifies valid/invalid placement, prerequisites, task completion, and exact one-time balance/inventory changes. This covers simulation behavior, not the rendered UI. |
+| M1-02 | Exercise clearing prerequisites, exactly-once charge, progress, prepared state, and repeat/invalid requests. | **COMPLETE** | The native simulation suite covers pre-shelter rejection, out-of-block rejection, valid/duplicate clearing, exact cost, progress, and final PREPARED state. |
+| M1-03 | Exercise the 4 × 4 planting grid, all 16 slots, reservations, resource consumption, and invalid indices. | **COMPLETE** | The native suite fills all sixteen slots and verifies unique palm IDs, slot IDs, world positions, exact seedling consumption, and duplicate/out-of-range rejection. |
 | M1-04 | Verify the establishment flow with the mobile HUD and touch input at the agreed minimum resolution. | **BLOCKED** | Recorded manual run on the M0 device; buttons, details, and placement feedback remain usable without overlap or dead tap areas. |
 
 ## M2 — First Harvest (**current milestone**)
@@ -48,12 +48,12 @@ The branch baseline under review is `e6c3ef39512573c2eb2ee481bbdc260b1a7051c7`. 
 |---|---|---|---|
 | M2-01 | Convert the ad-hoc browser E2E flow into a checked-in, fresh-state test with deterministic assertions. | **COMPLETE** | `node --test web-preview/tests/simulation.test.mjs` passes the committed browser-only suite (5/5 tests); native acceptance remains separate. |
 | M2-02 | Complete the readiness-gate, duplicate-reservation, task-queue, and worker-state test matrix. | **IN PROGRESS** | Not-ready and duplicate requests, worker walking/harvesting, and post-harvest delivery priority are asserted; cancellation/blocking and remaining transition cases remain. |
-| M2-03 | Execute first harvest → collection → sale → repeat harvest in the native Godot project. | **BLOCKED** | Blocked by M0-02; completion requires native run logs and exact mass/cash reconciliation, not browser parity alone. |
-| M2-04 | Complete conservation and accounting coverage: palm yield = worker load = deposited stock = sold quantity; sale is applied once. | **IN PROGRESS** | The committed single-palm path asserts exact harvest, delivery, sale, funds, and duplicate-sale behavior; zero/rounding/multiple-ready edge cases remain. |
-| M2-05 | Perform separate manual browser visual/input acceptance and label the result Browser-only. | **NOT STARTED** | Real browser test covers click/drag, zoom, action bar, detail panels, harvest/sale, and WebGL rendering; it cannot close M2-03. |
-| M2-06 | Complete second crop-cycle and task delivery-priority coverage in both test harnesses. | **IN PROGRESS** | The browser test proves the palm persists, returns to readiness, and the first delivery is prioritized; it does not yet complete a second harvest or cover native behavior. |
+| M2-03 | Execute first harvest → collection → sale → repeat harvest in the native Godot project. | **IN PROGRESS** | The native GDScript simulation harness passes the two-harvest, delivery, sale, and exact balance path. Main-scene/UI integration and a real renderer run are still unverified. |
+| M2-04 | Complete conservation and accounting coverage: palm yield = worker load = deposited stock = sold quantity; sale is applied once. | **IN PROGRESS** | Browser and native suites now verify two single-palm batches, delivered/sold quantity, sale revenue, and duplicate-sale behavior; zero/rounding/multiple-ready edge cases remain. |
+| M2-05 | Perform separate manual browser visual/input acceptance and label the result Browser-only. | **NOT STARTED** | Manual acceptance should cover click/drag, zoom, action bar, detail panels, harvest/sale, and WebGL rendering; it cannot close native M2-03. |
+| M2-06 | Complete second crop-cycle and task delivery-priority coverage in both test harnesses. | **COMPLETE** | Both browser and native simulation suites complete a second harvest, verify that delivery follows harvest, and reconcile the second sale. |
 
-**M2 stop rule:** the milestone cannot be COMPLETE until the remaining M2-02/M2-03/M2-04/M2-06 gates pass with repository-backed or otherwise repeatable evidence and the native implementation has been run in Godot. M2-01 now closes only the browser-suite task; it does not close M2. The browser tests are evidence for the prototype only.
+**M2 stop rule:** M2 cannot be COMPLETE until M2-02/M2-03/M2-04 pass and the native main-scene interaction/rendering path is validated. M2-01 and M2-06 close browser/native simulation-test tasks only; browser or headless simulation success alone does not complete the milestone.
 
 ## M3 — Credible crop and agronomy model
 

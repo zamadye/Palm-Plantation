@@ -528,7 +528,7 @@ func _render_worker_details() -> void:
 	if simulation == null:
 		return
 	var active_task = simulation.worker.current_task
-	var task_id := "—" if active_task == null else active_task.id
+	var task_id: String = "—" if active_task == null else str(active_task.id)
 	var task_status := "Available" if active_task == null else "%s · %s" % [active_task.task_type, active_task.status_name()]
 	var task_progress := 0 if active_task == null else int(round(active_task.progress * 100.0))
 	var signature := "%s|%s|%s|%d|%d|%d|%.0f|%.1f" % [
@@ -566,9 +566,9 @@ func _update_worker_detail_values() -> void:
 
 
 func _render_palm_details(palm) -> void:
-	var fertilizer_available := simulation._available_resource("fertilizer")
-	var pesticide_available := simulation._available_resource("pesticide")
-	var estimated_ffb := int(round(palm.fruit_quantity)) if palm.harvest_ready else simulation.estimate_ffb_yield(palm)
+	var fertilizer_available: int = int(simulation._available_resource("fertilizer"))
+	var pesticide_available: int = int(simulation._available_resource("pesticide"))
+	var estimated_ffb: int = int(round(palm.fruit_quantity)) if palm.harvest_ready else int(simulation.estimate_ffb_yield(palm))
 	var harvest_reserved: bool = simulation.harvest_reservations.has(palm.id)
 	var signature := "%s|%d|%d|%d|%d|%d|%d|%d|%d|%s" % [
 		palm.id,
@@ -621,10 +621,10 @@ func _render_land_details() -> void:
 		return
 	var state_label := _land_state_label()
 	var progress_value := int(round(simulation.land_progress * 100.0))
-	var available_seedlings := simulation._available_resource("seedlings")
-	var available_fertilizer := simulation._available_resource("fertilizer")
-	var available_pesticide := simulation._available_resource("pesticide")
-	var ready_harvest_count := simulation.get_ready_harvest_count()
+	var available_seedlings: int = int(simulation._available_resource("seedlings"))
+	var available_fertilizer: int = int(simulation._available_resource("fertilizer"))
+	var available_pesticide: int = int(simulation._available_resource("pesticide"))
+	var ready_harvest_count: int = int(simulation.get_ready_harvest_count())
 	var signature := "%s|%d|%d|%d|%d|%d|%d|%d|%d" % [
 		state_label,
 		progress_value,
@@ -683,7 +683,7 @@ func _create_detail_button(text_value: String) -> Button:
 
 
 func _render_collection_details() -> void:
-	var latest_sale := simulation.latest_transaction
+	var latest_sale: Dictionary = simulation.latest_transaction
 	var sale_signature := "none" if latest_sale.is_empty() else "%s|%d|%d|%d" % [
 		str(latest_sale.get("id", "")),
 		int(latest_sale.get("ffb_kg", 0)),

@@ -39,6 +39,17 @@ node --test web-preview/tests/simulation.test.mjs
 
 These tests cover browser-side simulation logic only; they do not validate Godot, WebGL rendering, or mobile input.
 
+### Native Godot simulation acceptance
+
+With Godot 4.3 or newer available, run these commands from the repository root:
+
+```sh
+godot --headless --editor --path . --quit
+godot --headless --path . --script res://tests/godot/simulation_acceptance.gd
+```
+
+The native runner currently passes 83 assertions for establishment, all sixteen planting positions, harvest, FFB delivery/sale, and a second crop cycle. It tests the GDScript simulation layer, not the rendered main scene, HUD, touch input, or device performance. The branch-provided Linux Godot archive can be extracted outside the project and its executable substituted for `godot`.
+
 ## Controls
 
 - **BUILD / LAND / PLANT** in the bottom action bar, then tap or click the world to place or select an action.

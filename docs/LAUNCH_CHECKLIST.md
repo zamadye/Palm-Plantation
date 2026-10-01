@@ -2,7 +2,7 @@
 
 ## Release posture
 
-**Not release-ready.** The audited project is a prototype. M2 First Harvest is current but not COMPLETE; browser-side checks pass ad hoc, while Godot native runtime, target-device behavior, persistence, and performance remain UNVERIFIED. Do not use this checklist to imply a launch date or schedule.
+**Not release-ready.** The audited project is a prototype. M2 First Harvest is current but not COMPLETE; the browser and Godot headless simulation suites pass, while visible native rendering/UI, target-device behavior, persistence, and performance remain UNVERIFIED. Do not use this checklist to imply a launch date or schedule.
 
 The bounded launch scope is defined in [ROADMAP.md](ROADMAP.md). Godot 4.x is the production target. Android landscape is the proposed first mobile target, but the exact supported OS/device matrix must be accepted and recorded in M0. Browser shipping and iOS are not promised.
 
@@ -21,7 +21,7 @@ Use the status in each line and link a build, test report, review, or signed dec
 - [x] **COMPLETE** — User authorized development following this roadmap; implementation proceeds under the documented scope and `FUTURE_BACKLOG` rule.
 - [ ] **NOT STARTED** — Product name, target audience, supported language(s), store/region, and age/content rating are confirmed.
 - [ ] **NOT STARTED** — Minimum supported OS/device and landscape resolution are recorded from M0.
-- [ ] **NOT STARTED** — Four-block, one-crop, one-outlet campaign scope is frozen; every excluded feature is kept out of release work.
+- [x] **COMPLETE** — Four-block, one-crop, one-outlet campaign scope is frozen by the approved [roadmap](ROADMAP.md); excluded features remain subject to `FUTURE_BACKLOG` and require an approved scope change.
 - [ ] **NOT STARTED** — Any real-world agronomy, finance, legal, environmental, or worker-safety claims are either reviewed with sources or clearly labeled illustrative.
 
 ## 2. Milestone and gameplay readiness
@@ -35,17 +35,17 @@ Use the status in each line and link a build, test report, review, or signed dec
 
 ## 3. Native build and platform
 
-- [ ] **BLOCKED** — Clean Godot 4.x import and release export succeed from a clean checkout; engine version and export settings are documented.
+- [ ] **BLOCKED** — Clean Godot 4.x import passes in a fresh project copy with Godot 4.3, but release export and export settings remain UNVERIFIED; see [QA evidence](QA_PLAN.md).
 - [ ] **NOT STARTED** — Signed release candidate installs and cold-starts on every supported device/OS class.
-- [ ] **NOT STARTED** — Main scene, camera, HUD, touch input, app lifecycle, and offline play work on the exact shipped build.
+- [ ] **BLOCKED** — Main scene, camera, HUD, touch input, app lifecycle, and offline play are not accepted on a shipped build; visible-renderer and target-device validation is unavailable. The headless Dummy-renderer run is insufficient evidence.
 - [ ] **NOT STARTED** — Save/load, app suspend/resume, low storage, and recoverable load failure have been tested.
 - [ ] **NOT STARTED** — Package name/version/icon/splash/permissions and minimum OS settings are reviewed; no unnecessary permission is requested.
 - [ ] **NOT STARTED** — Final install package is at or below the approved package-size budget or an exception is approved.
 
 ## 4. Quality and performance
 
-- [ ] **BLOCKED** — Repository-backed Godot tests and documented clean-checkout commands pass.
-- [ ] **NOT STARTED** — Browser test results are separately labeled; they are not substituted for Godot results.
+- [x] **COMPLETE** — Repository-backed Godot simulation tests pass 83 assertions from a clean project copy, and setup/commands are documented in the [README](../README.md) and [QA plan](QA_PLAN.md). This closes simulation-test reproducibility only, not rendered-scene acceptance.
+- [x] **COMPLETE** — Browser evidence is labeled separately and is not substituted for Godot results; see the [QA plan](QA_PLAN.md).
 - [ ] **NOT STARTED** — 30-minute dense-estate profiling on the minimum device meets the accepted frame-time, memory, startup, save/load, input, draw-call, simulation-step, and thermal budgets.
 - [ ] **NOT STARTED** — Worst-case camera, maximum accepted estate state, active task load, and open HUD have been profiled.
 - [ ] **NOT STARTED** — Manual touch, readability, color-independent state cues, reduced-motion/audio-off, and first-time usability checks pass.
@@ -78,8 +78,7 @@ Use the status in each line and link a build, test report, review, or signed dec
 
 ## Current blocked items
 
-1. Roadmap authorization is recorded; any new or unroadmapped feature still requires a scope change.
-2. Godot is not installed in the environment and official release-asset downloads fail at the asset CDN; project import, native play, and release export are UNVERIFIED.
-3. M1 and M2 native acceptance suites are not repository-backed or executed.
-4. No target device, save/load, performance profile, release build, or supported OS matrix has been established.
-5. The checked-in browser simulation suite validates only the separate browser prototype; browser rendering/input and Godot remain unverified.
+1. Godot 4.3 from the branch-provided archive passes a clean import and 83 native simulation assertions. Headless main-scene launch exits 0 but prints repeated Dummy-renderer `mesh_get_surface_count` errors (also reproduced by a standalone BoxMesh); visible rendering/UI and release export remain UNVERIFIED.
+2. Repository-backed M1/M2 simulation tests pass, but native main-scene integration, UI/input, remaining transition and accounting edge cases, and full milestone acceptance are still open.
+3. No display/GPU or target device is available; save/load, performance profile, release build, and supported OS matrix are also unestablished.
+4. The checked-in browser suite validates only the separate browser prototype; manual browser rendering/input acceptance remains unverified.

@@ -280,7 +280,7 @@ func request_harvest(palm_id: String, show_toast: bool = true) -> bool:
 			toast.emit("A harvest task is already assigned to this palm.", "info")
 		return false
 	harvest_reservations[palm_id] = true
-	var work_position := palm.position + Vector3(0.0, 0.0, 1.1)
+	var work_position: Vector3 = palm.position + Vector3(0.0, 0.0, 1.1)
 	_enqueue_task(
 		_make_task(
 			"HARVESTING", work_position, HARVEST_DURATION,
@@ -440,7 +440,7 @@ func get_progress_text() -> String:
 		and worker.state != WorkerData.State.IDLE
 		and worker.state != WorkerData.State.WALKING
 	):
-		var task_label := worker.job_type.replace("_", " ").capitalize()
+		var task_label: String = worker.job_type.replace("_", " ").capitalize()
 		return "%s  ·  %d%%" % [task_label, _milestone_percent(worker.job_progress)]
 	return "DAY %02d  ·  GAME SPEED x%.0f" % [day_number, game_speed]
 

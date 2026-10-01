@@ -4,7 +4,7 @@
 
 QA evidence must identify **which runtime was tested**. Browser/Three.js results do not validate Godot GDScript, `.tscn` resources, Mobile-renderer behavior, touch handling, or Android performance. A code change alone never completes a milestone.
 
-**M2 First Harvest is the current milestone and is not COMPLETE.** It cannot be accepted until the native Godot implementation is run and its harvest → delivery → sale → repeat test is reproducible from the repository or from documented, versioned test commands. The current browser-only headless pass is useful evidence, not the native gate.
+**M2 First Harvest is the current milestone and is not COMPLETE.** The repository now has both browser-side and native GDScript simulation suites, but neither replaces a visible main-scene/UI run. Keep Godot logic, Godot scene/rendering, and browser results separate; M2 still requires the remaining native integration and edge-case gates.
 
 ## Result vocabulary
 
@@ -22,19 +22,21 @@ Baseline: code commit `e6c3ef39512573c2eb2ee481bbdc260b1a7051c7` on `arena/01a0f
 
 | Check | Current result | What it proves / does not prove |
 |---|---|---|
-| `gdparse` over every `scripts/**/*.gd` | **PASS (ad-hoc)** | GDScript grammar parsed using an ephemeral `gdtoolkit` environment. Does not prove Godot type/resource loading, signal wiring, scene startup, or runtime behavior; parser is not pinned in the repository. |
-| `node --check` on browser simulation, main, and world modules | **PASS** | JavaScript syntax only. |
-| Browser simulation Node suite | **PASS (repeatable, browser-only)** | `node --test web-preview/tests/simulation.test.mjs` passes 5/5 tests for fresh-state shelter/clearing/planting/maintenance/growth/harvest/delivery/sale/repeat readiness, 16-slot/resource rules, and duplicate-sale prevention. This tests JavaScript simulation logic, not the browser UI or Godot. |
+| `gdparse` over every `scripts/**/*.gd` | **PASS (ad-hoc)** | GDScript grammar parsed using an ephemeral `gdtoolkit` environment. Does not prove Godot type/resource loading, signal wiring, scene startup, or runtime behavior; parser version is not pinned. |
+| Godot 4.3 clean editor import | **PASS (repeatable)** | `godot --headless --editor --path . --quit` passes on a fresh project copy with no script parse errors. |
+| Native Godot simulation acceptance | **PASS (headless/domain only)** | `godot --headless --path . --script res://tests/godot/simulation_acceptance.gd` prints `PASS: 83 native simulation assertions`; it covers establishment, all slots, two harvests, delivery, and two sales without loading the visual scene. |
+| `node --check` on browser simulation, main, world, and test modules | **PASS** | JavaScript syntax only. |
+| Browser simulation Node suite | **PASS (repeatable, browser-only)** | `node --test web-preview/tests/simulation.test.mjs` passes 5/5 tests, including two harvest/delivery/sale cycles. This tests JavaScript simulation logic, not the browser UI or Godot. |
 | Browser Three.js world-sync smoke | **PASS (ad-hoc/headless)** | Verified procedural scene objects, ready fruit bunches, worker load visibility, collection quantity, and selection state using a lightweight DOM stub. No real browser rendering/input was tested. |
 | Browser static HTTP smoke | **PASS (ad-hoc/local)** | Entry page, JS modules, CSS, and vendored Three.js responded with HTTP 200 from a local static server. No WebGL/browser compatibility or touch behavior was tested. |
-| `git diff --check` before documentation edits | **PASS** | Whitespace/error-marker check only. Re-run after changes. |
-| Godot import and native main-scene startup | **NOT RUN / UNVERIFIED** | No Godot executable is available in the audit environment. |
-| Native Godot gameplay, signals, scene resources, touch/UI, renderer | **NOT RUN / UNVERIFIED** | No engine execution. |
+| Headless main scene under Dummy renderer | **BROKEN (renderer-specific diagnostic)** | Godot exits 0 but logs `mesh_get_surface_count` null errors for MeshInstances; a standalone BoxMesh probe reproduces the same diagnostic. No script errors appear after type fixes; visible rendering is not tested. |
+| `git diff --check` | **PASS** | Whitespace/error-marker check only. Re-run after changes. |
+| Native rendered main-scene gameplay, signals, touch/UI, renderer | **NOT RUN / UNVERIFIED** | No desktop display/GPU or target device is available. The headless simulation runner does not load the main scene. |
 | Manual browser WebGL interaction/layout | **NOT RUN / UNVERIFIED** | No actual browser acceptance in this audit. |
 | Minimum mobile device, FPS, memory, thermal, save/load | **NOT RUN / UNVERIFIED** | No target device, save system, or profiler evidence. |
-| Tracked tests/CI | **PARTIAL** | The browser simulation suite is tracked. No native Godot test suite or CI workflow exists yet; parser, Three.js world-sync, and static HTTP checks remain ad hoc. |
+| Tracked tests/CI | **PARTIAL** | Browser Node and native GDScript simulation suites are tracked. No rendered-scene automation or CI workflow exists; parser, Three.js world-sync, and static HTTP checks remain ad hoc. |
 
-Only the browser simulation suite is currently repeatable from the repository. Do not infer M2 `COMPLETE`: native Godot acceptance is still NOT RUN.
+Both simulation suites are repeatable from the repository. M2 is still not COMPLETE because main-scene/UI integration, remaining edge cases, and device acceptance are outstanding.
 
 ## Required test layers
 
@@ -47,6 +49,14 @@ Only the browser simulation suite is currently repeatable from the repository. D
 - Pin or document tool versions; avoid relying on untracked venvs, caches, or locally edited files.
 
 ### 2. Simulation unit tests (Godot production)
+
+The current native runner is `tests/godot/simulation_acceptance.gd`. Run it with Godot 4.3+ from the repository root:
+
+```sh
+godot --headless --path . --script res://tests/godot/simulation_acceptance.gd
+```
+
+It currently passes 83 assertions on the simulation records and task flow. It does not load `scenes/main/main.tscn`, so it cannot verify the world renderer, HUD, input, or touch integration.
 
 Test pure domain logic without scene rendering where possible:
 
@@ -86,7 +96,7 @@ A Node built-in test suite now lives at `web-preview/tests/simulation.test.mjs`;
 node --test web-preview/tests/simulation.test.mjs
 ```
 
-It currently checks fresh-state setup, one-time shelter/clearing costs, all sixteen planting reservations, maintenance inventory reservation, not-ready/duplicate harvest requests, worker movement/work state, delivery priority, FFB/cash conservation, and repeat readiness. Extend it with cancellation/blocking, rounding, multiple-ready-palm, and broader queue edge cases. These tests exercise browser-side JavaScript simulation only. Next add real-browser rendering/input coverage for WebGL, drag/touch, and layout; label every result **Browser**. Browser results cannot satisfy N-01–N-08.
+It currently checks fresh-state setup, one-time shelter/clearing costs, all sixteen planting reservations, maintenance inventory reservation, not-ready/duplicate harvest requests, worker movement/work state, delivery priority, FFB/cash conservation, and a completed second harvest/delivery/sale cycle. Extend it with cancellation/blocking, rounding, multiple-ready-palm, and broader queue edge cases. These tests exercise browser-side JavaScript simulation only. Next add real-browser rendering/input coverage for WebGL, drag/touch, and layout; label every result **Browser**. Browser results cannot satisfy N-01–N-08.
 
 ### 5. Manual mobile UX and accessibility
 
@@ -111,9 +121,9 @@ Install the exact signed candidate build on each supported device/OS. Verify fir
 
 ## Milestone quality gates
 
-- **M0:** user-accepted documents, reproducible Godot import/launch, pinned/documented test tools, and a named device baseline.
-- **M1:** N-01 through N-03 pass natively, including exact resource/slot edge cases.
-- **M2:** N-04 through N-07 pass natively and repeatably; browser suite separately passes; no FFB/cash duplication/loss.
+- **M0:** user-accepted documents, reproducible Godot import, a visible main-scene smoke on a non-Dummy renderer, documented test tools, and a named device baseline.
+- **M1:** N-01 through N-03 pass natively, including exact resource/slot edge cases; required scene/input path is checked separately.
+- **M2:** N-04 through N-07 pass in the native runner and are exercised through the native main-scene path; browser suite separately passes; no FFB/cash duplication/loss.
 - **M3–M7:** deterministic unit/integration fixtures pass; domain/model reviews and sources are recorded where required.
 - **M8:** manual usability/accessibility gates pass in the bounded launch scenario.
 - **M9:** save/load, compatibility, stress, and performance gates pass on the supported baseline device.

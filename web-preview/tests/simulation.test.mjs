@@ -199,5 +199,21 @@ test('first harvest conserves FFB through delivery and sale, then permits a repe
   advanceUntil(simulation, () => palm.harvest_ready, 'repeat harvest readiness');
   assert.equal(palm.harvest_count, 1);
   assert.equal(simulation.palms.length, 1, 'harvesting must not remove the palm');
+  const secondYieldKg = palm.fruit_quantity;
+  const fundsBeforeSecondSale = simulation.resources.money;
   assert.equal(simulation.requestHarvest(palm.id), true);
+  advanceUntil(simulation, () => palm.harvest_count === 2, 'second harvest completion');
+  assert.equal(simulation.worker.carrying_ffb, true);
+  assert.equal(simulation.activeTask.task_type, 'FFB_DELIVERY');
+  advanceUntil(
+    simulation,
+    () => simulation.resources.harvested_ffb_kg === secondYieldKg && simulation.worker.state === TASK_STATE.IDLE,
+    'second FFB delivery',
+  );
+  const secondSale = simulation.sellFFB();
+  assert.equal(secondSale.ffb_kg, secondYieldKg);
+  assert.equal(secondSale.revenue, secondYieldKg);
+  assert.equal(simulation.transactions.length, 2);
+  assert.equal(simulation.resources.money, fundsBeforeSecondSale + secondYieldKg);
+  assert.equal(simulation.resources.harvested_ffb_kg, 0);
 });

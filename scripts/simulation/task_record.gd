@@ -16,4 +16,4 @@ var payload: Dictionary = {}
 
 
 func status_name() -> String:
-	return Status.keys()[int(status)]
+	return str(Status.keys()[int(status)])

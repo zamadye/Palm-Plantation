@@ -18,7 +18,7 @@ Use the status in each line and link a build, test report, review, or signed dec
 
 ## 1. Product and scope lock
 
-- [ ] **BLOCKED** — User accepts this document set, launch scope, eight gameplay layers, and `FUTURE_BACKLOG` rule.
+- [x] **COMPLETE** — User authorized development following this roadmap; implementation proceeds under the documented scope and `FUTURE_BACKLOG` rule.
 - [ ] **NOT STARTED** — Product name, target audience, supported language(s), store/region, and age/content rating are confirmed.
 - [ ] **NOT STARTED** — Minimum supported OS/device and landscape resolution are recorded from M0.
 - [ ] **NOT STARTED** — Four-block, one-crop, one-outlet campaign scope is frozen; every excluded feature is kept out of release work.
@@ -78,8 +78,8 @@ Use the status in each line and link a build, test report, review, or signed dec
 
 ## Current blocked items
 
-1. Documentation review/acceptance is pending; gameplay remains frozen until accepted.
-2. Godot is not installed in the audit environment; project import, native play, and release export are UNVERIFIED.
+1. Roadmap authorization is recorded; any new or unroadmapped feature still requires a scope change.
+2. Godot is not installed in the environment and official release-asset downloads fail at the asset CDN; project import, native play, and release export are UNVERIFIED.
 3. M1 and M2 native acceptance suites are not repository-backed or executed.
 4. No target device, save/load, performance profile, release build, or supported OS matrix has been established.
-5. Existing browser tests are ad hoc and validate only the separate browser prototype.
+5. The checked-in browser simulation suite validates only the separate browser prototype; browser rendering/input and Godot remain unverified.

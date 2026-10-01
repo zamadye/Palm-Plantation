@@ -13,7 +13,7 @@ This file is the live, evidence-based status snapshot. The planning source of tr
 - [QA plan and current evidence](docs/QA_PLAN.md)
 - [Launch checklist](docs/LAUNCH_CHECKLIST.md)
 
-**Scope hold:** no gameplay feature work is authorized until the user reviews and accepts this documentation baseline. Unroadmapped ideas go only into `FUTURE_BACKLOG` in `docs/ROADMAP.md`; they are not implementation requests by default.
+**Execution authorization:** the user has instructed us to start development following this roadmap; that is treated as approval to proceed under the documented scope. Unroadmapped ideas still go only into `FUTURE_BACKLOG` in `docs/ROADMAP.md` and are not implementation requests by default.
 
 ## Snapshot
 
@@ -23,8 +23,8 @@ This file is the live, evidence-based status snapshot. The planning source of tr
 | Working branch | `arena/01a0f46d-palm-plantation` |
 | Production target | Godot 4.x; project declares Godot 4.3 features and the Mobile renderer; modest/mobile hardware is the design target |
 | Current product milestone | **M2 — First Harvest** |
-| M2 status | **IN PROGRESS, not COMPLETE.** Browser-side behavior passed an ad-hoc headless run. The native Godot project has not been loaded or played in Godot, so the production implementation and its acceptance gate remain UNVERIFIED. |
-| Documentation review | Pending user review and acceptance |
+| M2 status | **IN PROGRESS, not COMPLETE.** A checked-in Node test suite now passes for the separate browser simulation. The native Godot project has not been loaded or played in Godot, so the production implementation and its acceptance gate remain UNVERIFIED. |
+| Documentation review | Accepted for execution by the user's instruction to start development following the roadmap |
 | Release readiness | Not release-ready; no native runtime, device, save/load, or performance acceptance evidence |
 
 M0 and M1 validation debt is not waived by working on M2. M2 is the active feature target because the repository already contains a first-harvest slice; the preceding project-start and establishment gates still have to pass before M2 can be declared complete.
@@ -33,7 +33,7 @@ M0 and M1 validation debt is not waived by working on M2. M2 is the active featu
 
 The audited code baseline contains one Godot project and one main scene, plus a separately authored browser implementation in `web-preview/`. The browser code is JavaScript/Three.js; it neither imports nor runs the GDScript or `.tscn` scene. The Godot world and characters are predominantly procedural. The only standalone game art asset found is `assets/icon.svg`; Three.js is vendored in `web-preview/vendor/three.min.js` with `web-preview/THREE-LICENSE.txt`.
 
-There are no tracked automated tests, CI workflows, export presets, save/load implementation, or QA automation at the audited baseline. Values such as the growth durations, yields, starting cash, and `$1/kg` FFB price are prototype parameters, not validated agricultural or commercial forecasts.
+At the audited baseline there was no tracked test suite, CI workflow, export preset, save/load implementation, or QA automation. Development has now added a **browser-only Node test suite** at `web-preview/tests/simulation.test.mjs`; there is still no native Godot test suite or CI. Values such as the growth durations, yields, starting cash, and `$1/kg` FFB price are prototype parameters, not validated agricultural or commercial forecasts.
 
 ## Feature audit
 
@@ -56,7 +56,7 @@ Status describes the audited feature—not milestone completion. A feature may h
 | Workforce | **PARTIALLY IMPLEMENTED** | One named worker and a FIFO task queue exist. Energy, morale, and experience are largely presentation/data placeholders; hiring, wages, skills, schedules, and multiple crews do not exist. |
 | First harvest and FFB delivery | **PARTIALLY IMPLEMENTED** | A ready palm can be reserved, harvested by a worker, carried to a collection point, and recorded as stored FFB. Capacity, freshness, vehicle logistics, and mill processing are absent. |
 | FFB sale / market | **PLACEHOLDER** | Stored kilograms can be sold at a hard-coded `$1/kg`; this is an accounting demonstration, not a market model. |
-| Browser prototype loop | **IMPLEMENTED (browser prototype only)** | Fresh-state browser-simulation E2E and Three.js world-sync headless checks passed in this audit. It is not the production runtime; manual browser interaction/rendering remains unverified. |
+| Browser prototype loop | **IMPLEMENTED (browser prototype only)** | The checked-in Node suite passes five simulation tests covering the fresh-state cycle, resource/slot rules, readiness/reservation gates, worker harvest/delivery, sale accounting, and repeat readiness. It is not the production runtime; manual browser interaction/rendering remains unverified. |
 | Browser static delivery | **IMPLEMENTED (local smoke only)** | An in-process HTTP smoke check returned 200 for the entry page, modules, stylesheet, and vendored Three.js. This is not browser compatibility testing. |
 | Visual presentation | **PARTIALLY IMPLEMENTED** | Procedural meshes, MultiMesh background forest, camera, characters, and responsive HUD code exist. Final art, accessibility, device layout, and native rendering are not accepted. |
 | Weather, soil, climate, biodiversity, community, and regulation | **NOT IMPLEMENTED** | No operational or stewardship model exists. |
@@ -69,7 +69,7 @@ Status describes the audited feature—not milestone completion. A feature may h
 |---|---|---|
 | `gdparse` on every `scripts/**/*.gd` file | **PASS** | Parser-only check using an ephemeral `gdtoolkit` environment; no parser dependency or test runner is committed. |
 | `node --check` on browser simulation, main, and world modules | **PASS** | JavaScript syntax only. |
-| Browser simulation E2E from fresh state | **PASS (ad-hoc)** | Shelter → clear → plant → fertilize → treat → grow → harvest → deliver → sell → repeat cycle. The run produced 151 kg, `$151` revenue, `$1,501` funds after the prototype costs, and a second harvest-ready cycle. The test script is not checked into the repository. |
+| Browser simulation tests | **PASS (repeatable, browser-only)** | `node --test web-preview/tests/simulation.test.mjs` passes 5/5 tests, including the fresh-state loop, all sixteen planting reservations, invalid/duplicate harvest gates, worker movement/work, exact delivery/sale accounting, duplicate-sale prevention, and repeat readiness. These tests do not validate Godot. |
 | Three.js world-sync smoke | **PASS (headless/ad-hoc)** | Created/synced scene objects, ripe bunches, worker load, collection quantity, and selection indicator with a lightweight DOM stub. Not a rendered browser test. |
 | Browser static HTTP smoke | **PASS (local/ad-hoc)** | Expected static paths responded with HTTP 200. Not a real-browser, mobile-browser, or WebGL compatibility test. |
 | `git diff --check` before documentation edits | **PASS** | Whitespace check only. |
@@ -83,15 +83,15 @@ Full test scenarios, gates, and pass/fail evidence policy are in [QA_PLAN.md](do
 
 | ID | Milestone | Status | Next gate |
 |---|---|---|---|
-| M0 | Direction, review, and production validation foundation | **IN PROGRESS** | User accepts the documents; a Godot 4.3+ import/main-scene smoke is reproducible; a target-device baseline is named. |
+| M0 | Direction, review, and production validation foundation | **IN PROGRESS** | Documentation approval is recorded; a Godot 4.3+ import/main-scene smoke and target-device baseline remain outstanding. |
 | M1 | Estate establishment | **IN PROGRESS — validation debt** | Native fresh-state shelter, clearing, and planting acceptance passes, including resource/slot edge cases. |
 | M2 | First Harvest | **IN PROGRESS — CURRENT** | Checked-in reproducible acceptance evidence plus successful native Godot end-to-end execution; browser evidence stays a separate gate. |
 | M3–M10 | Agronomy through release | **NOT STARTED** | See [ROADMAP.md](docs/ROADMAP.md); no scope is implicitly approved by this status table. |
 
 ## Immediate next actions
 
-1. Review and accept or revise this documentation baseline.
-2. Keep gameplay changes frozen until that review is complete.
-3. Obtain/use a Godot 4.3+ runtime and establish a repeatable native import, launch, and test command.
-4. Turn the ad-hoc M1/M2 checks into repository-backed acceptance tests; keep browser and Godot results separate.
-5. Update this file only when the evidence changes. A code change alone does not make a milestone COMPLETE.
+1. Obtain a Godot 4.3+ runtime through an approved/reachable install path; the official release-asset download is currently blocked in this environment.
+2. Establish a repeatable native import/launch/test command and name the minimum mobile device baseline.
+3. Add and run native M1/M2 acceptance tests; keep browser and Godot results separate.
+4. Continue M2 only against its stated acceptance gates; do not add unroadmapped gameplay.
+5. Update this file only when evidence changes. A code change or browser pass alone does not make a milestone COMPLETE.

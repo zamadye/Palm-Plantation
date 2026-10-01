@@ -24,7 +24,7 @@ Baseline: code commit `e6c3ef39512573c2eb2ee481bbdc260b1a7051c7` on `arena/01a0f
 |---|---|---|
 | `gdparse` over every `scripts/**/*.gd` | **PASS (ad-hoc)** | GDScript grammar parsed using an ephemeral `gdtoolkit` environment. Does not prove Godot type/resource loading, signal wiring, scene startup, or runtime behavior; parser is not pinned in the repository. |
 | `node --check` on browser simulation, main, and world modules | **PASS** | JavaScript syntax only. |
-| Fresh-state browser simulation loop | **PASS (ad-hoc)** | Ran shelter → clear → plant → fertilize → treat → growth → harvest → delivery → sale → repeat growth. The observed fixture produced 151 kg, `$151` revenue, `$1,501` funds after the prototype costs, and a second harvest-ready cycle. The script is not committed. |
+| Browser simulation Node suite | **PASS (repeatable, browser-only)** | `node --test web-preview/tests/simulation.test.mjs` passes 5/5 tests for fresh-state shelter/clearing/planting/maintenance/growth/harvest/delivery/sale/repeat readiness, 16-slot/resource rules, and duplicate-sale prevention. This tests JavaScript simulation logic, not the browser UI or Godot. |
 | Browser Three.js world-sync smoke | **PASS (ad-hoc/headless)** | Verified procedural scene objects, ready fruit bunches, worker load visibility, collection quantity, and selection state using a lightweight DOM stub. No real browser rendering/input was tested. |
 | Browser static HTTP smoke | **PASS (ad-hoc/local)** | Entry page, JS modules, CSS, and vendored Three.js responded with HTTP 200 from a local static server. No WebGL/browser compatibility or touch behavior was tested. |
 | `git diff --check` before documentation edits | **PASS** | Whitespace/error-marker check only. Re-run after changes. |
@@ -32,9 +32,9 @@ Baseline: code commit `e6c3ef39512573c2eb2ee481bbdc260b1a7051c7` on `arena/01a0f
 | Native Godot gameplay, signals, scene resources, touch/UI, renderer | **NOT RUN / UNVERIFIED** | No engine execution. |
 | Manual browser WebGL interaction/layout | **NOT RUN / UNVERIFIED** | No actual browser acceptance in this audit. |
 | Minimum mobile device, FPS, memory, thermal, save/load | **NOT RUN / UNVERIFIED** | No target device, save system, or profiler evidence. |
-| Tracked automated tests/CI | **NOT PRESENT** | No test suite or CI workflow was found at the audited baseline. |
+| Tracked tests/CI | **PARTIAL** | The browser simulation suite is tracked. No native Godot test suite or CI workflow exists yet; parser, Three.js world-sync, and static HTTP checks remain ad hoc. |
 
-These checks were run for the audit but are not currently a repeatable committed suite. Do not infer `COMPLETE` from this table.
+Only the browser simulation suite is currently repeatable from the repository. Do not infer M2 `COMPLETE`: native Godot acceptance is still NOT RUN.
 
 ## Required test layers
 
@@ -80,7 +80,13 @@ Use fixtures to make long growth timelines testable. Keep the fixture's compress
 
 ### 4. Browser-only test suite
 
-The browser prototype has its own JavaScript/Three.js modules and must keep its own suite. When added, automate the current fresh-state loop, invalid actions, task ordering, repeat harvest, sales accounting, and scene-sync state. Run browser tests in a real supported browser for WebGL and input/layout. Label all reports **Browser**. Browser results can support design exploration but cannot satisfy N-01–N-08.
+A Node built-in test suite now lives at `web-preview/tests/simulation.test.mjs`; run it from the repository root with:
+
+```sh
+node --test web-preview/tests/simulation.test.mjs
+```
+
+It currently checks fresh-state setup, one-time shelter/clearing costs, all sixteen planting reservations, maintenance inventory reservation, not-ready/duplicate harvest requests, worker movement/work state, delivery priority, FFB/cash conservation, and repeat readiness. Extend it with cancellation/blocking, rounding, multiple-ready-palm, and broader queue edge cases. These tests exercise browser-side JavaScript simulation only. Next add real-browser rendering/input coverage for WebGL, drag/touch, and layout; label every result **Browser**. Browser results cannot satisfy N-01–N-08.
 
 ### 5. Manual mobile UX and accessibility
 

@@ -28,8 +28,8 @@ The branch baseline under review is `e6c3ef39512573c2eb2ee481bbdc260b1a7051c7`. 
 
 | ID | Task | Status | Completion evidence |
 |---|---|---|---|
-| M0-01 | Review and accept/revise the roadmap, eight gameplay layers, bounded launch scope, architecture, and no-scope-growth rule. | **IN PROGRESS** | User review decision recorded; resulting changes reflected consistently across the source-of-truth documents. |
-| M0-02 | Run a clean Godot 4.3+ import and launch `scenes/main/main.tscn`; capture engine output. | **BLOCKED** | A Godot runtime is not installed in the current environment. Complete when the exact command exits 0 with no script/runtime errors on a clean checkout. |
+| M0-01 | Review and accept/revise the roadmap, eight gameplay layers, bounded launch scope, architecture, and no-scope-growth rule. | **COMPLETE** | User instructed development to start following this roadmap; work proceeds under the documented scope unless revised. |
+| M0-02 | Run a clean Godot 4.3+ import and launch `scenes/main/main.tscn`; capture engine output. | **BLOCKED** | No Godot runtime is installed. Official release-asset download attempts fail at the asset CDN in this environment, and system package installation is unavailable. Complete when the exact command exits 0 with no script/runtime errors on a clean checkout. |
 | M0-03 | Add a repository-backed, repeatable native test command and document its setup. | **NOT STARTED** | A clean checkout can run the same tests without relying on an untracked local script or parser environment. |
 | M0-04 | Choose and record minimum mobile device/OS, landscape resolution, and profiling procedure. | **NOT STARTED** | Device/build IDs and baseline test procedure recorded; no device is assumed from the current project setting alone. |
 
@@ -46,14 +46,14 @@ The branch baseline under review is `e6c3ef39512573c2eb2ee481bbdc260b1a7051c7`. 
 
 | ID | Task | Status | Completion evidence |
 |---|---|---|---|
-| M2-01 | Convert the ad-hoc browser E2E flow into a checked-in, fresh-state test with deterministic assertions. | **IN PROGRESS** | Current one-off run passed through shelter, clearing, planting, maintenance, maturity, harvest, delivery, sale, and repeat growth; the script is not yet in the repository. |
-| M2-02 | Test readiness gates, duplicate harvest reservation, task queue order, and worker state transitions. | **NOT STARTED** | Repeatable tests prove non-ready/duplicate requests are rejected and each valid harvest has exactly one harvest and delivery task. |
+| M2-01 | Convert the ad-hoc browser E2E flow into a checked-in, fresh-state test with deterministic assertions. | **COMPLETE** | `node --test web-preview/tests/simulation.test.mjs` passes the committed browser-only suite (5/5 tests); native acceptance remains separate. |
+| M2-02 | Complete the readiness-gate, duplicate-reservation, task-queue, and worker-state test matrix. | **IN PROGRESS** | Not-ready and duplicate requests, worker walking/harvesting, and post-harvest delivery priority are asserted; cancellation/blocking and remaining transition cases remain. |
 | M2-03 | Execute first harvest → collection → sale → repeat harvest in the native Godot project. | **BLOCKED** | Blocked by M0-02; completion requires native run logs and exact mass/cash reconciliation, not browser parity alone. |
-| M2-04 | Verify conservation and accounting: palm yield = worker load = deposited stock = sold quantity; sale is applied once. | **NOT STARTED** | Automated edge cases cover zero stock, repeated sell, rounded yield, reserved task, and multiple ready palms with no lost/duplicated units. |
+| M2-04 | Complete conservation and accounting coverage: palm yield = worker load = deposited stock = sold quantity; sale is applied once. | **IN PROGRESS** | The committed single-palm path asserts exact harvest, delivery, sale, funds, and duplicate-sale behavior; zero/rounding/multiple-ready edge cases remain. |
 | M2-05 | Perform separate manual browser visual/input acceptance and label the result Browser-only. | **NOT STARTED** | Real browser test covers click/drag, zoom, action bar, detail panels, harvest/sale, and WebGL rendering; it cannot close M2-03. |
-| M2-06 | Verify second crop cycle and task delivery priority in both test harnesses. | **NOT STARTED** | Tests prove the palm persists, recovery returns it to readiness, and delivery is not skipped when more harvest work is queued. |
+| M2-06 | Complete second crop-cycle and task delivery-priority coverage in both test harnesses. | **IN PROGRESS** | The browser test proves the palm persists, returns to readiness, and the first delivery is prioritized; it does not yet complete a second harvest or cover native behavior. |
 
-**M2 stop rule:** the milestone cannot be COMPLETE until M2-01/M2-03/M2-04/M2-06 pass with repository-backed or otherwise repeatable evidence and the native implementation has been run in Godot. The present browser run is evidence of the prototype only.
+**M2 stop rule:** the milestone cannot be COMPLETE until the remaining M2-02/M2-03/M2-04/M2-06 gates pass with repository-backed or otherwise repeatable evidence and the native implementation has been run in Godot. M2-01 now closes only the browser-suite task; it does not close M2. The browser tests are evidence for the prototype only.
 
 ## M3 — Credible crop and agronomy model
 

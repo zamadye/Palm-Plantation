@@ -29,6 +29,16 @@ Then open `http://localhost:8000` in a WebGL 2-capable browser. No Godot, Node.j
 
 The preview mirrors gameplay behavior but is a separate web implementation, not the exact Godot runtime. Run the native project in Godot 4.3+ to test the source game itself.
 
+### Developer browser-simulation tests
+
+Playing the static browser preview does not require Node.js. To run the separately authored simulation tests (Node.js 22+), use the built-in test runner from the repository root:
+
+```sh
+node --test web-preview/tests/simulation.test.mjs
+```
+
+These tests cover browser-side simulation logic only; they do not validate Godot, WebGL rendering, or mobile input.
+
 ## Controls
 
 - **BUILD / LAND / PLANT** in the bottom action bar, then tap or click the world to place or select an action.

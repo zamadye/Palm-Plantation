@@ -116,7 +116,7 @@ static func create_forest_tree(
 	return root
 
 
-static func create_palm(growth_stage: int) -> Node3D:
+static func create_palm(growth_stage: int, fruit_state: int = 0, harvest_ready: bool = false) -> Node3D:
 	var root := Node3D.new()
 	root.name = "OilPalm"
 	var trunk_height: float
@@ -178,6 +178,23 @@ static func create_palm(growth_stage: int) -> Node3D:
 		frond.position = crown
 		frond.rotation.y = -angle
 		root.add_child(frond)
+
+	# Small, high-contrast procedural bunches make fruit development readable at game scale.
+	if growth_stage >= 2 and (fruit_state == 1 or fruit_state == 2):
+		var bunch_color := Color(0.66, 0.38, 0.12) if fruit_state == 1 else Color(0.86, 0.24, 0.08)
+		for index in range(3):
+			var angle := TAU * float(index) / 3.0 + 0.35
+			var bunch_position := Vector3(
+				cos(angle) * 0.28,
+				trunk_height * 0.61 - float(index % 2) * 0.13,
+				sin(angle) * 0.28
+			)
+			var bunch := sphere(root, "FruitBunch_%d" % index, 0.26, bunch_position, bunch_color, Vector3(1.0, 1.15, 0.9), true)
+			if harvest_ready:
+				var ripe_material := bunch.material_override as StandardMaterial3D
+				ripe_material.emission_enabled = true
+				ripe_material.emission = Color(0.68, 0.12, 0.015)
+				ripe_material.emission_energy_multiplier = 0.22
 	return root
 
 
@@ -288,7 +305,30 @@ static func create_person(is_player: bool) -> Node3D:
 		tool, "Blade", Vector3(0.12, 0.20, 0.045), Vector3(0, -0.48, 0), Color(0.42, 0.46, 0.43)
 	)
 	blade.rotation.x = -0.15
+	if not is_player:
+		var ffb_load := Node3D.new()
+		ffb_load.name = "FFBLoad"
+		ffb_load.position = Vector3(0.0, 0.91, 0.28)
+		ffb_load.visible = false
+		box(ffb_load, "CarryBasket", Vector3(0.62, 0.32, 0.40), Vector3(0.0, 0.13, 0.0), Color(0.39, 0.30, 0.19))
+		for index in range(3):
+			sphere(
+				ffb_load,
+				"CarriedFFB_%d" % index,
+				0.16,
+				Vector3((float(index) - 1.0) * 0.18, 0.39, -0.03),
+				Color(0.82, 0.28, 0.08),
+				Vector3(1.0, 1.05, 0.9),
+				true
+			)
+		root.add_child(ffb_load)
 	return root
+
+
+static func set_person_carrying_ffb(root: Node3D, carrying: bool) -> void:
+	var load := root.get_node_or_null("FFBLoad") as Node3D
+	if load != null:
+		load.visible = carrying
 
 
 static func animate_person(root: Node3D, state_name: String, clock: float) -> void:
@@ -299,7 +339,7 @@ static func animate_person(root: Node3D, state_name: String, clock: float) -> vo
 	var torso := root.get_node_or_null("Torso") as Node3D
 	var tool := root.get_node_or_null("RightArm/Tool") as Node3D
 	if tool != null:
-		tool.visible = state_name in ["CLEARING", "PLANTING", "BUILDING", "FERTILIZING", "TREATING"]
+		tool.visible = state_name in ["CLEARING", "PLANTING", "BUILDING", "FERTILIZING", "TREATING", "HARVESTING"]
 	var swing := sin(clock * 8.0) * 0.48
 	if state_name == "WALKING":
 		if left_arm != null:
@@ -310,7 +350,7 @@ static func animate_person(root: Node3D, state_name: String, clock: float) -> vo
 			left_leg.rotation.x = swing
 		if right_leg != null:
 			right_leg.rotation.x = -swing
-	elif state_name in ["CLEARING", "PLANTING", "BUILDING", "FERTILIZING", "TREATING"]:
+	elif state_name in ["CLEARING", "PLANTING", "BUILDING", "FERTILIZING", "TREATING", "HARVESTING"]:
 		var work_cycle := sin(clock * (6.2 if state_name == "CLEARING" else 4.4))
 		if right_arm != null:
 			match state_name:
@@ -322,6 +362,8 @@ static func animate_person(root: Node3D, state_name: String, clock: float) -> vo
 					right_arm.rotation.x = -0.78 + work_cycle * 0.12
 				"TREATING":
 					right_arm.rotation.x = -0.40 + work_cycle * 0.14
+				"HARVESTING":
+					right_arm.rotation.x = -1.00 + work_cycle * 0.62
 				_:
 					right_arm.rotation.x = -0.55 + work_cycle * 0.40
 		if left_arm != null:

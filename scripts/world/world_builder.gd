@@ -14,6 +14,8 @@ var row_lines: Array[MeshInstance3D] = []
 var palm_views: Dictionary = {}
 var shelter_parts: Dictionary = {}
 var shelter_root: Node3D
+var collection_root: Node3D
+var collection_amount_label: Label3D
 var field_soil: MeshInstance3D
 var preview_root: Node3D
 var _slot_materials: Dictionary = {}
@@ -438,6 +440,68 @@ func _build_placement_preview() -> void:
 	add_child(preview_root)
 
 
+func build_collection_point(position: Vector3) -> void:
+	if collection_root != null:
+		return
+	collection_root = Node3D.new()
+	collection_root.name = "FFBCollectionPoint"
+	collection_root.position = Vector3(position.x, 0.0, position.z)
+	VisualFactory.box(
+		collection_root,
+		"CollectionPlatform",
+		Vector3(3.2, 0.20, 2.5),
+		Vector3(0.0, 0.10, 0.0),
+		Color(0.38, 0.30, 0.19)
+	)
+	VisualFactory.box(
+		collection_root,
+		"CollectionBinLeft",
+		Vector3(0.90, 0.78, 1.05),
+		Vector3(-0.82, 0.58, 0.0),
+		Color(0.45, 0.35, 0.22)
+	)
+	VisualFactory.box(
+		collection_root,
+		"CollectionBinRight",
+		Vector3(0.90, 0.78, 1.05),
+		Vector3(0.82, 0.58, 0.0),
+		Color(0.43, 0.33, 0.21)
+	)
+	for index in range(5):
+		var angle := TAU * float(index) / 5.0
+		VisualFactory.sphere(
+			collection_root,
+			"VisibleFFB_%d" % index,
+			0.27,
+			Vector3(cos(angle) * 0.56, 1.06 + float(index % 2) * 0.11, sin(angle) * 0.48),
+			Color(0.77, 0.31, 0.10),
+			Vector3(1.0, 0.88, 0.92),
+			true
+		)
+	var sign := VisualFactory.box(
+		collection_root,
+		"CollectionSign",
+		Vector3(2.45, 0.86, 0.10),
+		Vector3(0.0, 1.90, -0.95),
+		Color(0.32, 0.38, 0.27)
+	)
+	collection_amount_label = Label3D.new()
+	collection_amount_label.name = "StoredFFBLabel"
+	collection_amount_label.font_size = 30
+	collection_amount_label.outline_size = 5
+	collection_amount_label.modulate = Color(0.96, 0.91, 0.73)
+	collection_amount_label.position = Vector3(0.0, 0.0, -0.06)
+	collection_amount_label.rotation.y = PI
+	sign.add_child(collection_amount_label)
+	add_child(collection_root)
+	set_collection_amount(0)
+
+
+func set_collection_amount(amount_kg: int) -> void:
+	if collection_amount_label != null:
+		collection_amount_label.text = "FFB COLLECTION\n%d KG" % maxi(0, amount_kg)
+
+
 func spawn_shelter(position: Vector3) -> void:
 	if shelter_root != null and is_instance_valid(shelter_root):
 		shelter_root.queue_free()
@@ -596,11 +660,18 @@ func set_build_preview(point: Vector3, valid: bool, enabled: bool) -> void:
 
 
 func add_palm_visual(palm) -> void:
-	var visual := VisualFactory.create_palm(int(palm.growth_stage))
+	var visual := VisualFactory.create_palm(
+		int(palm.growth_stage), int(palm.fruit_state), palm.harvest_ready
+	)
 	visual.position = palm.position
 	visual.name = palm.id
 	add_child(visual)
-	palm_views[palm.id] = {"node": visual, "stage": int(palm.growth_stage)}
+	palm_views[palm.id] = {
+		"node": visual,
+		"stage": int(palm.growth_stage),
+		"fruit_state": int(palm.fruit_state),
+		"harvest_ready": palm.harvest_ready
+	}
 
 
 func update_palm_visual(palm) -> void:
@@ -608,15 +679,26 @@ func update_palm_visual(palm) -> void:
 		add_palm_visual(palm)
 		return
 	var entry: Dictionary = palm_views[palm.id]
-	if int(entry.stage) == int(palm.growth_stage):
+	if (
+		int(entry.stage) == int(palm.growth_stage)
+		and int(entry.fruit_state) == int(palm.fruit_state)
+		and bool(entry.harvest_ready) == palm.harvest_ready
+	):
 		return
 	var previous := entry.node as Node3D
-	var replacement := VisualFactory.create_palm(int(palm.growth_stage))
+	var replacement := VisualFactory.create_palm(
+		int(palm.growth_stage), int(palm.fruit_state), palm.harvest_ready
+	)
 	replacement.position = palm.position
 	replacement.name = palm.id
 	add_child(replacement)
 	previous.queue_free()
-	palm_views[palm.id] = {"node": replacement, "stage": int(palm.growth_stage)}
+	palm_views[palm.id] = {
+		"node": replacement,
+		"stage": int(palm.growth_stage),
+		"fruit_state": int(palm.fruit_state),
+		"harvest_ready": palm.harvest_ready
+	}
 
 
 func get_palm_position(palm_id: String) -> Vector3:

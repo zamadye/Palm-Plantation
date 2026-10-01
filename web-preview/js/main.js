@@ -79,18 +79,19 @@ function closeDetails() {
 function detailStateSignature() {
   if (!selection) return '';
   if (selection.kind === 'worker') {
-    const task = sim.tasks.find((entry) => entry.id === sim.worker.activeTaskId);
-    return `worker|${sim.worker.state}|${task?.id}|${task?.status}|${Math.floor((task?.progress ?? 0) * 4)}|${sim.taskQueue.length}|${sim.worker.experience}`;
+    const task = sim.worker.current_task;
+    return `worker|${sim.worker.state}|${task?.id}|${task?.status}|${Math.floor((task?.progress ?? 0) * 4)}|${sim.taskQueue.length}|${sim.worker.experience}|${Math.round(sim.worker.carried_ffb_kg)}`;
   }
   if (selection.kind === 'palm') {
     const palm = sim.palms.find((entry) => entry.id === selection.id);
     if (!palm) return 'missing-palm';
-    return `palm|${palm.id}|${palm.growth_stage}|${palm.age.toFixed(1)}|${Math.round(palm.health)}|${Math.round(palm.fertilizer)}|${Math.round(palm.pest_risk)}|${sim._available('fertilizer')}|${sim._available('pesticide')}`;
+    return `palm|${palm.id}|${palm.growth_stage}|${palm.fruit_state}|${palm.harvest_ready}|${palm.fruit_quantity}|${palm.harvest_count}|${palm.age.toFixed(1)}|${Math.round(palm.health)}|${Math.round(palm.fertilizer)}|${Math.round(palm.pest_risk)}|${sim.harvestReservations.has(palm.id)}|${sim._available('fertilizer')}|${sim._available('pesticide')}`;
   }
   if (selection.kind === 'zone') {
-    return `zone|${sim.landState}|${Math.floor(sim.landProgress * 4)}|${sim.palms.length}|${sim.reservedSlots.size}|${sim.resources.money}|${sim._available('seedlings')}|${sim._available('fertilizer')}|${sim._available('pesticide')}|${Boolean(sim.shelter?.complete)}`;
+    return `zone|${sim.landState}|${Math.floor(sim.landProgress * 4)}|${sim.palms.length}|${sim.reservedSlots.size}|${sim.resources.money}|${sim._available('seedlings')}|${sim._available('fertilizer')}|${sim._available('pesticide')}|${sim.getReadyHarvestCount()}|${Boolean(sim.shelter?.complete)}`;
   }
   if (selection.kind === 'shelter') return `shelter|${Math.floor((sim.shelter?.progress ?? 0) * 4)}|${Boolean(sim.shelter?.complete)}`;
+  if (selection.kind === 'collection') return `collection|${sim.resources.harvested_ffb_kg}|${sim.latestTransaction?.id}|${sim.latestTransaction?.revenue}|${sim.resources.money}`;
   return `management|${sim.landState}|${sim.day}|${sim.speed}|${sim.palms.length}|${sim.tasks.filter((task) => task.status === 'QUEUED').length}|${sim.activeTask?.id}`;
 }
 
@@ -103,15 +104,24 @@ function renderDetails() {
   panel.classList.remove('hidden');
   if (selection.kind === 'worker') {
     const worker = sim.worker;
-    const task = sim.tasks.find((entry) => entry.id === worker.activeTaskId);
+    const task = worker.current_task;
     const taskLabel = task ? `${task.task_type.replace('_', ' ')} · ${task.status}` : 'Available';
-    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>RAFI · FIELD WORKER</h2><p class="detail-sub">${worker.state} · ${taskLabel}</p><div class="detail-row"><span>Current task</span><b>${task ? `${Math.round(task.progress * 100)}%` : '—'}</b></div><div class="meter"><i style="width:${task ? task.progress * 100 : 0}%"></i></div><div class="detail-row"><span>Completed jobs</span><b>${worker.experience}</b></div><div class="detail-row"><span>Work queue</span><b>${sim.taskQueue.length} orders</b></div><div class="detail-actions"><button data-focus>FOCUS WORKER</button></div>`;
+    const carrying = worker.carrying_ffb ? `<div class="detail-row"><span>Carrying</span><b>${Math.round(worker.carried_ffb_kg)} kg FFB</b></div>` : '';
+    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>${worker.name.toUpperCase()} · FIELD WORKER</h2><p class="detail-sub">${worker.role} · ${worker.state}</p><div class="detail-row"><span>Active task</span><b>${taskLabel}</b></div><div class="detail-row"><span>Task progress</span><b>${task ? `${Math.round(task.progress * 100)}%` : '—'}</b></div><div class="meter"><i style="width:${task ? task.progress * 100 : 0}%"></i></div><div class="detail-row"><span>Productivity</span><b>${Math.round(worker.productivity * 100)}%</b></div><div class="detail-row"><span>Work queue</span><b>${sim.taskQueue.length} orders</b></div>${carrying}<div class="detail-row"><span>Completed jobs</span><b>${worker.experience}</b></div><div class="detail-actions"><button data-focus>FOCUS WORKER</button></div>`;
   } else if (selection.kind === 'palm') {
     const palm = sim.palms.find((entry) => entry.id === selection.id);
     if (!palm) return closeDetails();
     const canFertilize = sim._available('fertilizer') >= 5;
     const canTreat = sim._available('pesticide') >= 2;
-    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>PALM · ${sim.stageName(palm).toUpperCase()}</h2><p class="detail-sub">${palm.id.replace('_', ' ')} · Age ${palm.age.toFixed(1)} game days</p><div class="detail-row"><span>Health</span><b>${Math.round(palm.health)}%</b></div><div class="meter"><i style="width:${palm.health}%;background:#9fbd83"></i></div><div class="detail-row"><span>Fertilizer</span><b>${Math.round(palm.fertilizer)}%</b></div><div class="meter"><i style="width:${palm.fertilizer}%;background:#b8ad6a"></i></div><div class="detail-row"><span>Pest risk</span><b>${Math.round(palm.pest_risk)}%</b></div><div class="meter"><i style="width:${palm.pest_risk}%;background:#ce8961"></i></div><div class="detail-actions"><button data-maint="FERTILIZE" ${canFertilize ? '' : 'disabled'}>FERTILIZE · 5</button><button data-maint="TREAT" ${canTreat ? '' : 'disabled'}>TREAT PEST · 2</button></div>`;
+    const fruitLabels = { NONE: palm.growth_stage === 2 ? 'Mature' : 'No fruit', DEVELOPING: 'Fruit developing', READY: 'Ready to harvest', HARVESTED: 'Harvested', RECOVERING: 'Recovery / growing' };
+    const estimatedFFB = palm.harvest_ready ? Math.round(palm.fruit_quantity) : sim.estimateFFBYield(palm);
+    const harvestReserved = sim.harvestReservations.has(palm.id);
+    const harvestAction = palm.harvest_ready
+      ? `<div class="detail-actions"><button data-harvest ${harvestReserved ? 'disabled' : ''}>${harvestReserved ? 'HARVEST ORDERED' : 'HARVEST'}</button></div>`
+      : (palm.growth_stage === 2 ? '<p class="detail-note">Fruit is not ripe yet. Keep accelerated time running while it develops.</p>' : '');
+    const lastHarvest = palm.last_harvest == null ? '' : `<div class="detail-row"><span>Last harvest / cycles</span><b>Day ${Math.floor(palm.last_harvest) + 1} · ${palm.harvest_count}</b></div>`;
+    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>PALM · ${sim.stageName(palm).toUpperCase()}</h2><p class="detail-sub">${palm.id.replace('_', ' ')} · Age ${palm.age.toFixed(1)} game days</p><div class="detail-row"><span>Stage</span><b>${sim.stageName(palm).toUpperCase()}</b></div><div class="detail-row"><span>Health</span><b>${Math.round(palm.health)}%</b></div><div class="detail-row"><span>Fruit state</span><b>${fruitLabels[palm.fruit_state] ?? 'Mature'}</b></div><div class="detail-row"><span>Estimated FFB</span><b>${estimatedFFB} kg</b></div>${lastHarvest}${harvestAction}<div class="detail-row"><span>Fertilizer</span><b>${Math.round(palm.fertilizer)}%</b></div><div class="meter"><i style="width:${palm.fertilizer}%;background:#b8ad6a"></i></div><div class="detail-row"><span>Pest risk</span><b>${Math.round(palm.pest_risk)}%</b></div><div class="meter"><i style="width:${palm.pest_risk}%;background:#ce8961"></i></div><div class="detail-actions"><button data-maint="FERTILIZE" ${canFertilize ? '' : 'disabled'}>FERTILIZE · 5</button><button data-maint="TREAT" ${canTreat ? '' : 'disabled'}>TREAT PEST · 2</button></div>`;
+    panel.querySelector('[data-harvest]')?.addEventListener('click', () => sim.requestHarvest(palm.id));
     panel.querySelectorAll('[data-maint]').forEach((button) => button.addEventListener('click', () => sim.maintenance(button.dataset.maint, 'palm', palm.id)));
   } else if (selection.kind === 'zone') {
     const state = ['Forest', 'Clearing', 'Prepared land'][sim.landState];
@@ -122,6 +132,8 @@ function renderDetails() {
       content += `<div class="detail-row"><span>Clearing progress</span><b>${Math.floor(sim.landProgress * 100)}%</b></div><div class="meter"><i style="width:${sim.landProgress * 100}%"></i></div><p class="detail-note">Rafi is removing the block vegetation. The planting grid appears when work is complete.</p>`;
     } else {
       content += `<div class="detail-row"><span>Planting positions</span><b>${sim.palms.length + sim.reservedSlots.size} / 16</b></div><p class="detail-note">Four evenly spaced rows are ready. Choose PLANT, then tap an open marker.</p><div class="detail-actions"><button data-plant>PLANT A SEEDLING</button></div>`;
+      const readyCount = sim.getReadyHarvestCount();
+      if (readyCount > 0) content += `<div class="detail-row"><span>Ready to harvest</span><b>${readyCount}</b></div><div class="detail-actions"><button data-harvest-block>HARVEST READY PALMS · ${readyCount}</button></div>`;
       if (sim.palms.length > 0) content += `<div class="detail-actions"><button data-maint="FERTILIZE">FERTILIZE BLOCK · 5</button><button data-maint="TREAT">TREAT BLOCK · 2</button></div>`;
     }
     panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>BLOCK 01 · ${state.toUpperCase()}</h2><p class="detail-sub">${sim.landState === LAND.PREPARED ? 'Surveyed 4 × 4 planting grid' : 'Survey stakes · east of camp'}</p>${content}`;
@@ -129,12 +141,18 @@ function renderDetails() {
       if (sim.clearField({ x: 8, z: 10 })) setAction('');
     });
     panel.querySelector('[data-plant]')?.addEventListener('click', () => { setAction('PLANT'); toast('Tap an open marker in the prepared grid.', 'info'); });
+    panel.querySelector('[data-harvest-block]')?.addEventListener('click', () => sim.requestHarvestBlock());
     panel.querySelectorAll('[data-maint]').forEach((button) => button.addEventListener('click', () => sim.maintenance(button.dataset.maint, 'block', 'block_01')));
   } else if (selection.kind === 'shelter') {
     const shelter = sim.shelter;
     if (!shelter) return closeDetails();
     const percent = Math.floor(shelter.progress * 100);
     panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>STARTER SHELTER</h2><p class="detail-sub">${shelter.complete ? 'Complete · field office established' : `Under construction · ${percent}%`}</p><div class="detail-row"><span>Construction</span><b>${percent}%</b></div><div class="meter"><i style="width:${percent}%"></i></div>`;
+  } else if (selection.kind === 'collection') {
+    const sale = sim.latestTransaction;
+    const saleDetails = sale ? `<p class="detail-sub">Last sale · ${sale.id}</p><div class="detail-row"><span>Sold</span><b>${sale.ffb_kg} kg FFB</b></div><div class="detail-row"><span>Revenue</span><b>+$${sale.revenue}</b></div><div class="detail-row"><span>Funds after sale</span><b>$${sale.funds_after.toLocaleString('en-US')}</b></div>` : '';
+    panel.innerHTML = `<button class="detail-close" aria-label="Close">×</button><h2>FFB COLLECTION</h2><p class="detail-sub">Fresh fruit bunch depot</p><div class="detail-row"><span>Stored FFB</span><b>${sim.resources.harvested_ffb_kg.toLocaleString('en-US')} kg</b></div><div class="detail-row"><span>Prototype price</span><b>$${sim.pricePerKg.toFixed(2)} / kg</b></div><p class="detail-note">Rafi delivers harvested bunches here before they can be sold.</p><div class="detail-actions"><button data-sell ${sim.resources.harvested_ffb_kg > 0 ? '' : 'disabled'}>SELL STORED FFB</button></div>${saleDetails}`;
+    panel.querySelector('[data-sell]')?.addEventListener('click', () => sim.sellFFB());
   } else {
     const queued = sim.tasks.filter((task) => task.status === 'QUEUED').length;
     const state = ['Forest', 'Clearing', 'Prepared'][sim.landState];
@@ -151,6 +169,7 @@ function updateHud() {
   document.querySelector('#res-seedlings').textContent = resources.seedlings;
   document.querySelector('#res-fertilizer').textContent = resources.fertilizer;
   document.querySelector('#res-pesticide').textContent = resources.pesticide;
+  document.querySelector('#res-ffb').textContent = Math.round(resources.harvested_ffb_kg).toLocaleString('en-US');
   document.querySelector('#day-label').textContent = String(sim.day).padStart(2, '0');
   document.querySelectorAll('[data-speed]').forEach((button) => button.classList.toggle('selected', Number(button.dataset.speed) === sim.speed));
   const [phase, title, hint] = sim.phaseInfo();
@@ -226,6 +245,10 @@ function handleWorldClick(point) {
     if (slot >= 0) sim.plant(slot);
     else toast('Choose one of the open planting markers.', 'warning');
     return;
+  }
+  // Select the collection point before the worker; Rafi returns to this spot after each delivery.
+  if (Math.hypot(point.x - sim.collectionPoint.x, point.z - sim.collectionPoint.z) < 3.5) {
+    setAction(''); showDetails('collection', sim.collectionPoint); return;
   }
   if (Math.hypot(point.x - sim.worker.x, point.z - sim.worker.z) < 1.7) {
     setAction('WORKERS'); showDetails('worker', sim.worker); return;

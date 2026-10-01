@@ -2,10 +2,15 @@ extends CanvasLayer
 class_name PlantationGameUI
 
 ## Mobile-first strategy HUD. UI sends intent to Main; simulation never owns UI nodes.
+const PalmData = preload("res://scripts/simulation/palm_record.gd")
+
 signal action_selected(action: String)
 signal speed_selected(speed: float)
 signal maintenance_requested(action: String, palm_id: String)
 signal land_clear_requested
+signal harvest_requested(palm_id: String)
+signal harvest_block_requested
+signal sell_requested
 signal selection_closed
 
 var simulation
@@ -52,6 +57,8 @@ func setup(state, controller) -> void:
 		simulation.land_changed.connect(_on_state_changed)
 	if not simulation.job_changed.is_connected(_on_state_changed):
 		simulation.job_changed.connect(_on_state_changed)
+	if not simulation.collection_changed.is_connected(_on_state_changed):
+		simulation.collection_changed.connect(_on_state_changed)
 	_refresh_hud()
 
 
@@ -72,6 +79,8 @@ func _process(delta: float) -> void:
 			_render_land_details()
 		elif selected_kind == "shelter":
 			_render_shelter_details()
+		elif selected_kind == "collection":
+			_render_collection_details()
 
 
 func _build_ui() -> void:
@@ -115,7 +124,8 @@ func _build_resources_card() -> void:
 		["wood", "TIMBER", ""],
 		["seedlings", "SEEDLINGS", ""],
 		["fertilizer", "FERTILIZER", ""],
-		["pesticide", "TREATMENT", ""]
+		["pesticide", "TREATMENT", ""],
+		["harvested_ffb_kg", "FFB KG", ""]
 	]
 	for entry in entries:
 		var column := VBoxContainer.new()
@@ -216,9 +226,14 @@ func _build_details_panel() -> void:
 	details_panel.custom_minimum_size = Vector2(270, 264)
 	details_panel.visible = false
 	var margin := _add_margin(details_panel, 15, 12, 15, 13)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(scroll)
 	details_content = VBoxContainer.new()
+	details_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	details_content.add_theme_constant_override("separation", 8)
-	margin.add_child(details_content)
+	scroll.add_child(details_content)
 	var header := HBoxContainer.new()
 	details_title = _label("DETAILS", 14, Color(0.94, 0.93, 0.84), true)
 	details_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -415,6 +430,8 @@ func _on_state_changed() -> void:
 		_render_shelter_details()
 	elif details_panel.visible and selected_kind == "land":
 		_render_land_details()
+	elif details_panel.visible and selected_kind == "collection":
+		_render_collection_details()
 
 
 func set_selected_worker() -> void:
@@ -447,6 +464,14 @@ func show_land_detail() -> void:
 	_last_detail_signature = ""
 	details_panel.visible = true
 	_render_land_details()
+
+
+func show_collection_detail() -> void:
+	selected_kind = "collection"
+	selected_id = simulation.collection_point.id
+	_last_detail_signature = ""
+	details_panel.visible = true
+	_render_collection_details()
 
 
 func show_management() -> void:
@@ -502,28 +527,33 @@ func _add_detail_row(caption: String, value: String) -> void:
 func _render_worker_details() -> void:
 	if simulation == null:
 		return
-	var active_task = simulation.worker.active_task
+	var active_task = simulation.worker.current_task
 	var task_id := "—" if active_task == null else active_task.id
 	var task_status := "Available" if active_task == null else "%s · %s" % [active_task.task_type, active_task.status_name()]
 	var task_progress := 0 if active_task == null else int(round(active_task.progress * 100.0))
-	var signature := "%s|%s|%s|%d|%d|%d|%.0f" % [
-		simulation.worker.worker_name,
+	var signature := "%s|%s|%s|%d|%d|%d|%.0f|%.1f" % [
+		simulation.worker.name,
 		simulation.worker.state_name(),
 		task_id + task_status,
 		task_progress,
 		simulation.worker.task_queue.size(),
 		int(simulation.worker.experience),
-		simulation.worker.energy
+		simulation.worker.energy,
+		simulation.worker.carried_ffb_kg
 	]
 	if signature == _last_detail_signature:
 		return
 	_last_detail_signature = signature
 	_clear_detail_rows()
-	details_title.text = simulation.worker.worker_name.to_upper()
+	details_title.text = simulation.worker.name.to_upper()
+	_add_detail_row("ROLE", simulation.worker.role)
 	_add_detail_row("CURRENT STATE", simulation.worker.state_name())
 	_add_detail_row("ACTIVE TASK", task_status)
 	_add_detail_row("TASK PROGRESS", "%d%%" % task_progress)
 	_add_detail_row("QUEUED TASKS", str(simulation.worker.task_queue.size()))
+	_add_detail_row("PRODUCTIVITY", "%.0f%%" % (simulation.worker.productivity * 100.0))
+	if simulation.worker.carrying_ffb:
+		_add_detail_row("CARRYING", "%d kg FFB" % int(round(simulation.worker.carried_ffb_kg)))
 	_add_detail_row("EXPERIENCE", "%.0f" % simulation.worker.experience)
 	_add_detail_label(
 		"Worker routes to each job and performs the work in-world.", Color(0.68, 0.73, 0.63), 10
@@ -538,30 +568,47 @@ func _update_worker_detail_values() -> void:
 func _render_palm_details(palm) -> void:
 	var fertilizer_available := simulation._available_resource("fertilizer")
 	var pesticide_available := simulation._available_resource("pesticide")
-	var signature := "%s|%d|%d|%d|%d|%d|%d|%d" % [
+	var estimated_ffb := int(round(palm.fruit_quantity)) if palm.harvest_ready else simulation.estimate_ffb_yield(palm)
+	var harvest_reserved: bool = simulation.harvest_reservations.has(palm.id)
+	var signature := "%s|%d|%d|%d|%d|%d|%d|%d|%d|%s" % [
 		palm.id,
 		int(palm.growth_stage),
+		int(palm.fruit_state),
 		int(floor(palm.age)),
 		int(round(palm.health)),
 		int(round(palm.fertilizer)),
 		int(round(palm.pest_risk)),
 		fertilizer_available,
-		pesticide_available
+		pesticide_available,
+		str(harvest_reserved)
 	]
 	if signature == _last_detail_signature:
 		return
 	_last_detail_signature = signature
 	_clear_detail_rows()
-	details_title.text = palm.stage_name().to_upper()
+	details_title.text = "PALM"
+	_add_detail_row("STAGE", palm.stage_name().to_upper())
 	_add_detail_row("AGE", "%.1f game days" % palm.age)
-	_add_detail_row("HEALTH", "%.0f / 100" % palm.health)
+	_add_detail_row("HEALTH", "%.0f%%" % palm.health)
+	_add_detail_row("FRUIT", palm.fruit_state_name())
+	_add_detail_row("ESTIMATED FFB", "%d kg" % estimated_ffb)
+	if palm.last_harvest >= 0.0:
+		_add_detail_row("LAST HARVEST", "Day %d · %d cycle(s)" % [int(floor(palm.last_harvest)) + 1, palm.harvest_count])
 	_add_detail_row("FERTILIZER", "%.0f%%" % palm.fertilizer)
 	_add_detail_row("PEST RISK", "%.0f%%" % palm.pest_risk)
-	_add_detail_label(
-		"Accelerated growth: SEEDLING → YOUNG PALM → MATURE PALM.", Color(0.68, 0.73, 0.63), 10
-	)
+	if palm.harvest_ready:
+		_add_harvest_button("HARVEST" if not harvest_reserved else "HARVEST ORDERED", palm.id, not harvest_reserved)
+	elif int(palm.growth_stage) == int(PalmData.GrowthStage.MATURE):
+		_add_detail_label("Harvest becomes available when fruit development completes.", Color(0.68, 0.73, 0.63), 10)
 	_add_detail_button("FERTILIZE  ·  5", "FERTILIZE", palm.id, fertilizer_available >= 5)
 	_add_detail_button("TREAT PESTS  ·  2", "TREAT", palm.id, pesticide_available >= 2)
+
+
+func _add_harvest_button(text_value: String, palm_id: String, enabled: bool) -> void:
+	var button := _create_detail_button(text_value)
+	button.disabled = not enabled
+	button.pressed.connect(func(): harvest_requested.emit(palm_id))
+	details_content.add_child(button)
 
 
 func refresh_palm_detail(palm) -> void:
@@ -577,7 +624,8 @@ func _render_land_details() -> void:
 	var available_seedlings := simulation._available_resource("seedlings")
 	var available_fertilizer := simulation._available_resource("fertilizer")
 	var available_pesticide := simulation._available_resource("pesticide")
-	var signature := "%s|%d|%d|%d|%d|%d|%d|%d" % [
+	var ready_harvest_count := simulation.get_ready_harvest_count()
+	var signature := "%s|%d|%d|%d|%d|%d|%d|%d|%d" % [
 		state_label,
 		progress_value,
 		simulation.palms.size(),
@@ -585,7 +633,8 @@ func _render_land_details() -> void:
 		available_seedlings,
 		available_fertilizer,
 		available_pesticide,
-		int(simulation.shelter != null and simulation.shelter.is_complete)
+		int(simulation.shelter != null and simulation.shelter.is_complete),
+		ready_harvest_count
 	]
 	if signature == _last_detail_signature:
 		return
@@ -614,6 +663,11 @@ func _render_land_details() -> void:
 				action_selected.emit("PLANT")
 			)
 			details_content.add_child(plant_button)
+			if ready_harvest_count > 0:
+				_add_detail_row("READY TO HARVEST", str(ready_harvest_count))
+				var harvest_button := _create_detail_button("HARVEST READY PALMS  ·  %d" % ready_harvest_count)
+				harvest_button.pressed.connect(func(): harvest_block_requested.emit())
+				details_content.add_child(harvest_button)
 			if not simulation.palms.is_empty():
 				_add_detail_button("FERTILIZE BLOCK  ·  5", "FERTILIZE", simulation.land_zone.id, available_fertilizer >= 5)
 				_add_detail_button("TREAT BLOCK  ·  2", "TREAT", simulation.land_zone.id, available_pesticide >= 2)
@@ -626,6 +680,34 @@ func _create_detail_button(text_value: String) -> Button:
 	button.focus_mode = Control.FOCUS_NONE
 	_style_button(button, true)
 	return button
+
+
+func _render_collection_details() -> void:
+	var latest_sale := simulation.latest_transaction
+	var sale_signature := "none" if latest_sale.is_empty() else "%s|%d|%d|%d" % [
+		str(latest_sale.get("id", "")),
+		int(latest_sale.get("ffb_kg", 0)),
+		int(latest_sale.get("revenue", 0)),
+		int(latest_sale.get("funds_after", 0))
+	]
+	var signature := "%d|%s" % [simulation.harvested_ffb_kg, sale_signature]
+	if signature == _last_detail_signature:
+		return
+	_last_detail_signature = signature
+	_clear_detail_rows()
+	details_title.text = "FFB COLLECTION"
+	_add_detail_row("STORED FFB", "%d kg" % simulation.harvested_ffb_kg)
+	_add_detail_row("PROTOTYPE PRICE", "$%.2f / kg" % simulation.PROTOTYPE_FFB_PRICE_PER_KG)
+	_add_detail_label("Fresh fruit bunches are delivered here by the worker before sale.", Color(0.68, 0.73, 0.63), 10)
+	var sell_button := _create_detail_button("SELL STORED FFB")
+	sell_button.disabled = simulation.harvested_ffb_kg <= 0
+	sell_button.pressed.connect(func(): sell_requested.emit())
+	details_content.add_child(sell_button)
+	if not latest_sale.is_empty():
+		_add_detail_label("LAST TRANSACTION  ·  %s" % str(latest_sale.get("id", "")), Color(0.78, 0.78, 0.58), 10)
+		_add_detail_row("SOLD", "%d kg FFB" % int(latest_sale.get("ffb_kg", 0)))
+		_add_detail_row("REVENUE", "+$%d" % int(latest_sale.get("revenue", 0)))
+		_add_detail_row("FUNDS AFTER SALE", "$%d" % int(latest_sale.get("funds_after", 0)))
 
 
 func _render_shelter_details() -> void:
@@ -676,7 +758,7 @@ func _update_management_values() -> void:
 	_add_detail_row("WORKER", simulation.worker.state_name().capitalize())
 	_add_detail_row("GAME SPEED", "x%.0f" % simulation.game_speed)
 	_add_detail_label(
-		"Operations: shelter → clear land → prepared grid → plant → maintain.",
+		"Operations: prepare → plant → maintain → harvest → collect FFB → sell.",
 		Color(0.68, 0.73, 0.63),
 		10
 	)

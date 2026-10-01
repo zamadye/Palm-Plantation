@@ -13,6 +13,13 @@ function mesh(geometry, mat, parent, position = [0, 0, 0]) {
   parent.add(item);
   return item;
 }
+function disposeObjectTree(root) {
+  root.traverse((item) => {
+    if (item.geometry) item.geometry.dispose();
+    if (Array.isArray(item.material)) item.material.forEach((entry) => entry.dispose());
+    else if (item.material) item.material.dispose();
+  });
+}
 function box(parent, size, position, color, mat = null) {
   return mesh(new THREE.BoxGeometry(...size), mat || material(color), parent, position);
 }
@@ -107,7 +114,7 @@ function buildPalmFronds(length, drop, color) {
   return frond;
 }
 
-function createPalm(stage) {
+function createPalm(stage, fruitState = 'NONE', harvestReady = false) {
   const root = new THREE.Group();
   // Exactly three data stages: seedling, young palm, mature palm.
   const heights = [.33, .82, 2.8];
@@ -127,7 +134,65 @@ function createPalm(stage) {
     crown.add(frond);
   }
   root.add(crown);
+  if (stageIndex === 2 && ['DEVELOPING', 'READY'].includes(fruitState)) {
+    const ripe = fruitState === 'READY';
+    const fruitColor = ripe ? '#df4b19' : '#a77931';
+    for (let i = 0; i < 3; i++) {
+      const angle = Math.PI * 2 * i / 3 + .35;
+      const fruit = sphere(
+        root, .26,
+        [Math.cos(angle) * .28, h * .61 - (i % 2) * .13, Math.sin(angle) * .28],
+        fruitColor, [1, 1.15, .9], 9,
+      );
+      fruit.name = `FruitBunch_${i}`;
+      if (ripe) fruit.material.emissive = new C('#862608');
+    }
+  }
   return root;
+}
+
+function createCollectionPoint(scene, position) {
+  const root = new THREE.Group();
+  root.name = 'FFBCollectionPoint';
+  root.position.set(position.x, 0, position.z);
+  box(root, [3.2, .2, 2.5], [0, .1, 0], '#695034');
+  box(root, [.9, .78, 1.05], [-.82, .58, 0], '#795b38');
+  box(root, [.9, .78, 1.05], [.82, .58, 0], '#715333');
+  box(root, [2.45, .86, .1], [0, 1.9, -.95], '#536044');
+  for (let i = 0; i < 5; i++) {
+    const angle = Math.PI * 2 * i / 5;
+    sphere(root, .27, [Math.cos(angle) * .56, 1.06 + (i % 2) * .11, Math.sin(angle) * .48], '#c24e20', [1, .88, .92], 8);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 160;
+  const context = canvas.getContext('2d');
+  context.fillStyle = 'rgba(32, 45, 34, .90)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+  label.position.set(0, 1.98, -.87);
+  label.scale.set(3.05, .95, 1);
+  root.add(label);
+  scene.add(root);
+  return { root, canvas, context, texture, label, amount: -1 };
+}
+
+function updateCollectionLabel(collectionView, amount) {
+  if (!collectionView || collectionView.amount === amount) return;
+  const { canvas, context, texture } = collectionView;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = 'rgba(32, 45, 34, .92)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#efe4bd';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.font = '700 33px sans-serif';
+  context.fillText('FFB COLLECTION', canvas.width / 2, 48);
+  context.font = '700 48px sans-serif';
+  context.fillText(`${Math.max(0, Math.round(amount)).toLocaleString()} KG`, canvas.width / 2, 111);
+  texture.needsUpdate = true;
+  collectionView.amount = amount;
 }
 
 function createSelectionMarker(field) {
@@ -178,6 +243,8 @@ function syncSelection(world, sim, selection) {
   } else if (selection.kind === 'shelter') {
     if (!sim.shelter) { marker.root.visible = false; return; }
     x = sim.shelter.position.x; z = sim.shelter.position.z; radius = 3.4;
+  } else if (selection.kind === 'collection') {
+    x = sim.collectionPoint.x; z = sim.collectionPoint.z; radius = 2.25;
   } else {
     marker.root.visible = false; return;
   }
@@ -215,6 +282,10 @@ function createPerson(isPlayer) {
     cylinder(tool, .025, .025, .75, [0, -.1, 0], '#745337', 5);
     box(tool, [.16, .2, .05], [0, -.47, 0], '#838981');
     root.add(tool); parts.tool = tool;
+    const load = new THREE.Group(); load.name = 'FFBLoad'; load.position.set(0, .91, .28); load.visible = false;
+    box(load, [.62, .32, .4], [0, .13, 0], '#684b2d');
+    for (let i = 0; i < 3; i++) sphere(load, .16, [(i - 1) * .18, .39, -.03], '#c94b1f', [1, 1.05, .9], 7);
+    root.add(load); parts.load = load;
   }
   root.userData.parts = parts;
   return root;
@@ -335,10 +406,11 @@ export function createWorld(scene, sim) {
   const worker = createPerson(false); worker.position.set(sim.worker.x, 0, sim.worker.z); scene.add(worker);
   const shelter = createShelter();
   scene.add(shelter.root); shelter.root.visible = false;
+  const collection = createCollectionPoint(scene, sim.collectionPoint);
   const palmViews = new Map();
   const selection = createSelectionMarker(field);
   scene.add(selection.root);
-  return { scene, clearingTrees, soil, markers, rowGuides, player, worker, shelter, palmViews, field, stakes, selection };
+  return { scene, clearingTrees, soil, markers, rowGuides, player, worker, shelter, collection, palmViews, field, stakes, selection };
 }
 
 export function syncWorld(world, sim, clock, selected = null) {
@@ -367,12 +439,21 @@ export function syncWorld(world, sim, clock, selected = null) {
   }
   for (const palm of sim.palms) {
     const existing = world.palmViews.get(palm.id);
-    if (!existing || existing.stage !== palm.growth_stage) {
-      if (existing) world.scene.remove(existing.root);
-      const root = createPalm(palm.growth_stage);
+    const fruitState = palm.fruit_state ?? 'NONE';
+    if (
+      !existing || existing.stage !== palm.growth_stage || existing.fruitState !== fruitState
+      || existing.harvestReady !== Boolean(palm.harvest_ready)
+    ) {
+      if (existing) {
+        world.scene.remove(existing.root);
+        disposeObjectTree(existing.root);
+      }
+      const root = createPalm(palm.growth_stage, fruitState, Boolean(palm.harvest_ready));
       root.position.set(palm.position.x, 0, palm.position.z);
       root.userData.palmId = palm.id;
-      world.palmViews.set(palm.id, { root, stage: palm.growth_stage });
+      world.palmViews.set(palm.id, {
+        root, stage: palm.growth_stage, fruitState, harvestReady: Boolean(palm.harvest_ready),
+      });
       world.scene.add(root);
     }
   }
@@ -384,13 +465,15 @@ export function syncWorld(world, sim, clock, selected = null) {
   world.worker.position.set(sim.worker.x, 0, sim.worker.z);
   animatePerson(world.player, sim.player.state, clock);
   animatePerson(world.worker, sim.worker.state, clock + .7);
+  world.worker.userData.parts.load.visible = sim.worker.carrying_ffb;
+  updateCollectionLabel(world.collection, sim.resources.harvested_ffb_kg);
   syncSelection(world, sim, selected);
 }
 
 function animatePerson(root, state, clock) {
   const p = root.userData.parts;
   const walking = state === 'WALKING';
-  const working = ['BUILDING', 'CLEARING', 'PLANTING', 'FERTILIZING', 'TREATING'].includes(state);
+  const working = ['BUILDING', 'CLEARING', 'PLANTING', 'FERTILIZING', 'TREATING', 'HARVESTING'].includes(state);
   const swing = Math.sin(clock * 8) * .48;
   const cycle = Math.sin(clock * (state === 'CLEARING' ? 6.2 : 4.4));
   p.legs[0].rotation.x = walking ? swing : state === 'PLANTING' ? -.18 : 0;
@@ -410,6 +493,9 @@ function animatePerson(root, state, clock) {
   } else if (state === 'TREATING') {
     p.arms[0].rotation.x = -.08;
     p.arms[1].rotation.x = -.4 + cycle * .14;
+  } else if (state === 'HARVESTING') {
+    p.arms[0].rotation.x = -.48 + cycle * .16;
+    p.arms[1].rotation.x = -1 + cycle * .62;
   } else {
     p.arms[0].rotation.x = Math.sin(clock * 1.7) * .03;
     p.arms[1].rotation.x = 0;

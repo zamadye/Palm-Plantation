@@ -21,6 +21,7 @@ var _hud_detail_clock: float = 0.0
 
 func _ready() -> void:
 	world.build_world(simulation.get_planting_slots())
+	world.build_collection_point(simulation.collection_point.position)
 	player_view = VisualFactory.create_person(true)
 	worker_view = VisualFactory.create_person(false)
 	actors.add_child(player_view)
@@ -36,6 +37,9 @@ func _ready() -> void:
 	ui.speed_selected.connect(simulation.set_game_speed)
 	ui.maintenance_requested.connect(_on_maintenance_requested)
 	ui.land_clear_requested.connect(_on_land_clear_requested)
+	ui.harvest_requested.connect(_on_harvest_requested)
+	ui.harvest_block_requested.connect(_on_harvest_block_requested)
+	ui.sell_requested.connect(_on_sell_requested)
 	ui.selection_closed.connect(_on_selection_closed)
 	simulation.shelter_started.connect(_on_shelter_started)
 	simulation.shelter_completed.connect(_on_shelter_completed)
@@ -44,6 +48,7 @@ func _ready() -> void:
 	simulation.land_changed.connect(_sync_world_state)
 	simulation.phase_changed.connect(_sync_world_state)
 	simulation.job_changed.connect(_on_job_changed)
+	simulation.collection_changed.connect(_on_collection_changed)
 	_sync_world_state()
 	ui.show_toast(
 		"Begin with the camp: BUILD a starter shelter, then open the marked forest block.", "info"
@@ -76,6 +81,7 @@ func _process(delta: float) -> void:
 	VisualFactory.animate_person(
 		worker_view, simulation.worker.state_name(), _animation_clock + 0.8
 	)
+	VisualFactory.set_person_carrying_ffb(worker_view, simulation.worker.carrying_ffb)
 	_last_player_position = simulation.player_position
 	_last_worker_position = simulation.worker.position
 
@@ -174,6 +180,17 @@ func _nearest_open_slot(point: Vector3) -> int:
 
 
 func _select_world_object(point: Vector3) -> void:
+	# Resolve the depot before nearby actors so the SELL panel remains accessible after delivery.
+	if simulation.collection_point != null:
+		var collection_distance := Vector2(point.x, point.z).distance_to(
+			Vector2(simulation.collection_point.position.x, simulation.collection_point.position.z)
+		)
+		if collection_distance < 3.5:
+			current_action = ""
+			ui.set_active_action("")
+			ui.show_collection_detail()
+			return
+
 	var worker_distance := Vector2(point.x, point.z).distance_to(
 		Vector2(simulation.worker.position.x, simulation.worker.position.z)
 	)
@@ -268,6 +285,18 @@ func _on_maintenance_requested(action: String, palm_id: String) -> void:
 	simulation.perform_maintenance(action, palm_id)
 
 
+func _on_harvest_requested(palm_id: String) -> void:
+	simulation.request_harvest(palm_id)
+
+
+func _on_harvest_block_requested() -> void:
+	simulation.request_harvest_block()
+
+
+func _on_sell_requested() -> void:
+	simulation.sell_ffb()
+
+
 func _on_selection_closed() -> void:
 	current_action = ""
 	ui.set_active_action("")
@@ -302,6 +331,12 @@ func _on_job_changed() -> void:
 	ui.refresh_hud()
 
 
+func _on_collection_changed() -> void:
+	world.set_collection_amount(simulation.harvested_ffb_kg)
+	if ui.selected_kind == "collection":
+		ui._render_collection_details()
+
+
 func _sync_palm_views() -> void:
 	for palm in simulation.palms:
 		world.update_palm_visual(palm)
@@ -326,6 +361,8 @@ func _update_selection_highlight() -> void:
 				world.set_selection("shelter", simulation.shelter.position, 3.35)
 			else:
 				world.clear_selection()
+		"collection":
+			world.set_selection("collection", simulation.collection_point.position, 2.25)
 		"land":
 			world.set_selection("zone", simulation.land_zone.position, 1.0)
 		_:
@@ -343,6 +380,7 @@ func _sync_world_state() -> void:
 		simulation.reserved_slots, simulation.planted_slots, int(simulation.land_state)
 	)
 	_sync_palm_views()
+	world.set_collection_amount(simulation.harvested_ffb_kg)
 	if ui != null:
 		ui.refresh_hud()
 

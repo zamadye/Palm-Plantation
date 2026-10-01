@@ -7,13 +7,22 @@ const PalmData = preload("res://scripts/simulation/palm_record.gd")
 const BuildingData = preload("res://scripts/simulation/building_record.gd")
 const LandZoneData = preload("res://scripts/simulation/land_zone_record.gd")
 const TaskData = preload("res://scripts/simulation/task_record.gd")
+const CollectionData = preload("res://scripts/simulation/ffb_collection_record.gd")
 
 const FIELD_CENTER := Vector3(8.0, 0.0, 10.0)
+const BASE_FFB_YIELD_KG := 180.0
+const PROTOTYPE_FFB_PRICE_PER_KG := 1.0
+const INITIAL_FRUIT_DEVELOPING_DAYS := 4.0
+const INITIAL_FRUIT_READY_DAYS := 15.0
+const RECOVERY_DEVELOPING_DAYS := 8.0
+const RECOVERY_READY_DAYS := 20.0
 const FIELD_SIZE := Vector2(24.0, 18.0)
 const DAY_LENGTH_SECONDS := 3.0
 const CLEARING_DURATION := 12.0
 const SHELTER_DURATION := 8.0
 const PLANTING_DURATION := 3.0
+const HARVEST_DURATION := 5.0
+const DELIVERY_DURATION := 2.0
 const CLEARING_COST := 150
 
 signal resources_changed
@@ -25,6 +34,8 @@ signal shelter_started(building)
 signal shelter_completed(building)
 signal palm_planted(palm)
 signal palm_changed(palm)
+signal collection_changed
+signal transaction_completed(transaction: Dictionary)
 signal toast(message: String, kind: String)
 
 ## Land-zone states are independent of their visual representation.
@@ -53,25 +64,37 @@ var player_state: String = "IDLE"
 
 var worker = null
 var shelter = null
+var collection_point = null
 var palms: Array = []
 var tasks: Array = []
+var transactions: Array[Dictionary] = []
+var latest_transaction: Dictionary = {}
+var harvest_reservations: Dictionary = {}
 var planting_slots: Array[Vector3] = []
 var reserved_slots: Dictionary = {}
 var planted_slots: Dictionary = {}
 var resources: Dictionary = {
-	"money": 1800, "wood": 28, "seedlings": 16, "fertilizer": 30, "pesticide": 12
+	"money": 1800, "wood": 28, "seedlings": 16, "fertilizer": 30, "pesticide": 12,
+	"harvested_ffb_kg": 0
 }
+var harvested_ffb_kg: int:
+	get:
+		return int(resources.get("harvested_ffb_kg", 0))
+	set(value):
+		resources["harvested_ffb_kg"] = maxi(0, value)
 
 var game_speed: float = 2.0
 var game_days_elapsed: float = 0.0
 var day_number: int = 1
 var _task_sequence: int = 0
+var _transaction_sequence: int = 0
 var _last_progress_milestone: int = -1
 
 
 func _ready() -> void:
 	land_zone.position = FIELD_CENTER
 	land_zone.size = FIELD_SIZE
+	collection_point = CollectionData.new()
 	worker = WorkerData.new()
 	worker.position = Vector3(-22.0, 0.0, 13.0)
 	worker.destination = worker.position
@@ -246,6 +269,89 @@ func perform_maintenance(action: String, target_id: String) -> bool:
 	return true
 
 
+func request_harvest(palm_id: String, show_toast: bool = true) -> bool:
+	var palm = get_palm(palm_id)
+	if palm == null or not palm.harvest_ready or palm.fruit_state != PalmData.FruitState.READY:
+		if show_toast:
+			toast.emit("This palm is not ready to harvest.", "warning")
+		return false
+	if harvest_reservations.has(palm_id):
+		if show_toast:
+			toast.emit("A harvest task is already assigned to this palm.", "info")
+		return false
+	harvest_reservations[palm_id] = true
+	var work_position := palm.position + Vector3(0.0, 0.0, 1.1)
+	_enqueue_task(
+		_make_task(
+			"HARVESTING", work_position, HARVEST_DURATION,
+			{"palm_id": palm_id, "fruit_quantity": palm.fruit_quantity}
+		)
+	)
+	if show_toast:
+		toast.emit("Harvest assigned. Rafi is walking to the ready palm.", "success")
+	return true
+
+
+func request_harvest_block() -> int:
+	var queued := 0
+	for palm in palms:
+		if palm.harvest_ready and not harvest_reservations.has(palm.id):
+			if request_harvest(palm.id, false):
+				queued += 1
+	if queued == 0:
+		toast.emit("No unreserved palms are ready to harvest.", "info")
+	else:
+		toast.emit("%d harvest task(s) queued for the ready block." % queued, "success")
+	return queued
+
+
+func get_ready_harvest_count() -> int:
+	var ready_count := 0
+	for palm in palms:
+		if palm.harvest_ready and not harvest_reservations.has(palm.id):
+			ready_count += 1
+	return ready_count
+
+
+func estimate_ffb_yield(palm) -> int:
+	if palm == null or int(palm.growth_stage) != int(PalmData.GrowthStage.MATURE):
+		return 0
+	var maturity_factor := 1.0
+	var health_factor := clampf(palm.health / 100.0, 0.25, 1.0)
+	return int(round(BASE_FFB_YIELD_KG * maturity_factor * health_factor))
+
+
+func sell_ffb() -> bool:
+	if harvested_ffb_kg <= 0:
+		toast.emit("There is no FFB in the collection point to sell.", "warning")
+		return false
+	var kilograms := harvested_ffb_kg
+	var revenue := int(round(float(kilograms) * PROTOTYPE_FFB_PRICE_PER_KG))
+	resources.money = int(resources.money) + revenue
+	harvested_ffb_kg = 0
+	_transaction_sequence += 1
+	var transaction := {
+		"id": "sale_%03d" % _transaction_sequence,
+		"day": day_number,
+		"ffb_kg": kilograms,
+		"price_per_kg": PROTOTYPE_FFB_PRICE_PER_KG,
+		"revenue": revenue,
+		"funds_after": int(resources.money)
+	}
+	transactions.append(transaction)
+	latest_transaction = transaction.duplicate(true)
+	resources_changed.emit()
+	collection_changed.emit()
+	transaction_completed.emit(latest_transaction)
+	phase_changed.emit()
+	toast.emit(
+		"HARVEST SOLD · %d kg FFB · Revenue +$%d · Funds $%d"
+		% [kilograms, revenue, int(resources.money)],
+		"success"
+	)
+	return true
+
+
 func get_palm(palm_id: String):
 	for palm in palms:
 		if palm.id == palm_id:
@@ -286,6 +392,16 @@ func get_phase_title() -> String:
 		return "02  ·  OPEN THE LAND"
 	if palms.is_empty():
 		return "03  ·  PLANT THE FIRST ROWS"
+	if harvested_ffb_kg > 0:
+		return "06  ·  FFB COLLECTION & SALE"
+	if get_ready_harvest_count() > 0:
+		return "05  ·  FIRST HARVEST"
+	for palm in palms:
+		if palm.harvest_ready:
+			return "05  ·  FIRST HARVEST"
+	for palm in palms:
+		if int(palm.growth_stage) == int(PalmData.GrowthStage.MATURE):
+			return "04  ·  FRUIT DEVELOPMENT"
 	return "04  ·  GROW & MAINTAIN THE BLOCK"
 
 
@@ -302,6 +418,14 @@ func get_instruction() -> String:
 		LandState.PREPARED:
 			if palms.is_empty():
 				return "PLANT: tap an open marker in the prepared grid."
+			if harvested_ffb_kg > 0:
+				return "FFB is stored. Select the collection point and SELL to record revenue."
+			for palm in palms:
+				if palm.harvest_ready:
+					return "Select a READY TO HARVEST palm or block to assign the harvest crew."
+			for palm in palms:
+				if int(palm.growth_stage) == int(PalmData.GrowthStage.MATURE):
+					return "Mature palms develop fruit over accelerated time; maintain health to support yield."
 			return "Select a palm to send the worker to fertilize or treat pests."
 	return "Watch the plantation grow."
 
@@ -316,7 +440,8 @@ func get_progress_text() -> String:
 		and worker.state != WorkerData.State.IDLE
 		and worker.state != WorkerData.State.WALKING
 	):
-		return "%s  ·  %d%%" % [worker.job_type.capitalize(), _milestone_percent(worker.job_progress)]
+		var task_label := worker.job_type.replace("_", " ").capitalize()
+		return "%s  ·  %d%%" % [task_label, _milestone_percent(worker.job_progress)]
 	return "DAY %02d  ·  GAME SPEED x%.0f" % [day_number, game_speed]
 
 
@@ -341,18 +466,21 @@ func _make_task(task_type: String, target: Vector3, duration: float, payload: Di
 	return task
 
 
-func _enqueue_task(task) -> void:
+func _enqueue_task(task, high_priority: bool = false) -> void:
 	tasks.append(task)
-	if worker.active_task == null and worker.state == WorkerData.State.IDLE:
+	if worker.current_task == null and worker.state == WorkerData.State.IDLE:
 		_assign_task(task)
+	elif high_priority:
+		worker.task_queue.push_front(task)
 	else:
 		worker.task_queue.append(task)
 	job_changed.emit()
 
 
 func _assign_task(task) -> void:
-	worker.active_task = task
+	worker.current_task = task
 	task.assigned_worker = worker.id
+	task.duration = maxf(0.1, task.duration / maxf(0.1, worker.productivity))
 	task.status = TaskData.Status.ASSIGNED
 	worker.destination = task.target
 	worker.job_type = task.task_type
@@ -367,7 +495,7 @@ func _assign_task(task) -> void:
 
 func _update_worker(delta: float, scaled_delta: float) -> void:
 	worker.time_in_state += delta
-	if worker.active_task == null:
+	if worker.current_task == null:
 		if not worker.task_queue.is_empty():
 			var next_task = worker.task_queue.pop_front()
 			_assign_task(next_task)
@@ -377,7 +505,7 @@ func _update_worker(delta: float, scaled_delta: float) -> void:
 			worker.job_progress = 0.0
 		return
 
-	var task = worker.active_task
+	var task = worker.current_task
 	if worker.state == WorkerData.State.WALKING:
 		var offset: Vector3 = worker.destination - worker.position
 		offset.y = 0.0
@@ -386,7 +514,7 @@ func _update_worker(delta: float, scaled_delta: float) -> void:
 			worker.state = _state_for_task(task.task_type)
 			worker.time_in_state = 0.0
 			task.status = TaskData.Status.IN_PROGRESS
-			player_state = task.task_type
+			player_state = worker.state_name()
 			job_changed.emit()
 		else:
 			worker.position += offset.normalized() * minf(worker.walk_speed * delta, offset.length())
@@ -417,7 +545,7 @@ func _update_player(delta: float) -> void:
 	offset.y = 0.0
 	if offset.length() <= 0.2:
 		player_position = player_destination
-		if worker.active_task == null or worker.state == WorkerData.State.WALKING:
+		if worker.current_task == null or worker.state == WorkerData.State.WALKING:
 			player_state = "IDLE"
 		return
 	player_position += offset.normalized() * minf(4.4 * delta, offset.length())
@@ -436,12 +564,17 @@ func _state_for_task(task_type: String):
 			return WorkerData.State.FERTILIZING
 		"TREATING":
 			return WorkerData.State.TREATING
+		"HARVESTING":
+			return WorkerData.State.HARVESTING
+		"FFB_DELIVERY":
+			return WorkerData.State.DELIVERING
 	return WorkerData.State.IDLE
 
 
 func _finish_task(task) -> void:
 	var task_type: String = task.task_type
 	var payload: Dictionary = task.payload
+	var harvested_kg := 0
 	match task_type:
 		"BUILDING":
 			if shelter != null:
@@ -494,17 +627,48 @@ func _finish_task(task) -> void:
 				"Fertilizing complete. Health +10." if task_type == "FERTILIZING" else "Pest treatment complete. Health +10.",
 				"success"
 			)
+		"HARVESTING":
+			var palm_id: String = str(payload.get("palm_id", ""))
+			var palm = get_palm(palm_id)
+			harvest_reservations.erase(palm_id)
+			if palm != null:
+				harvested_kg = maxi(0, int(round(float(payload.get("fruit_quantity", palm.fruit_quantity)))))
+				palm.harvest_ready = false
+				palm.fruit_state = PalmData.FruitState.HARVESTED
+				palm.fruit_quantity = 0.0
+				palm.last_harvest = game_days_elapsed
+				palm.harvest_count += 1
+				palm.fruit_cycle_days = 0.0
+				worker.carried_ffb_kg += float(harvested_kg)
+				worker.carrying_ffb = worker.carried_ffb_kg > 0.0
+				palm_changed.emit(palm)
+				toast.emit("Harvested %d kg FFB. Rafi is carrying it to collection." % harvested_kg, "success")
+		"FFB_DELIVERY":
+			var deposit_kg := int(payload.get("kg", round(worker.carried_ffb_kg)))
+			deposit_kg = mini(deposit_kg, int(round(worker.carried_ffb_kg)))
+			if deposit_kg > 0:
+				harvested_ffb_kg += deposit_kg
+				worker.carried_ffb_kg = maxf(0.0, worker.carried_ffb_kg - float(deposit_kg))
+				worker.carrying_ffb = worker.carried_ffb_kg > 0.0
+				collection_changed.emit()
+				resources_changed.emit()
+				toast.emit("Rafi deposited %d kg FFB at the collection point." % deposit_kg, "success")
 
 	task.progress = 1.0
 	task.status = TaskData.Status.COMPLETED
 	worker.experience += 1.0
-	worker.active_task = null
+	worker.current_task = null
 	worker.job_type = ""
 	worker.job_progress = 0.0
 	worker.state = WorkerData.State.IDLE
 	worker.time_in_state = 0.0
 	player_state = "IDLE"
-	if worker.task_queue.is_empty():
+	if task_type == "HARVESTING" and harvested_kg > 0:
+		var delivery_task = _make_task(
+			"FFB_DELIVERY", collection_point.position, DELIVERY_DURATION, {"kg": harvested_kg}
+		)
+		_enqueue_task(delivery_task, true)
+	elif worker.task_queue.is_empty():
 		player_destination = player_position
 	if task_type == "PLANTING" or task_type == "FERTILIZING" or task_type == "TREATING":
 		resources_changed.emit()
@@ -519,6 +683,7 @@ func _advance_growth(day_delta: float) -> void:
 		return
 	for palm in palms:
 		var previous_stage: int = palm.growth_stage
+		var previous_fruit_state: int = palm.fruit_state
 		palm.age += day_delta
 		palm.fertilizer = maxf(0.0, palm.fertilizer - 0.55 * day_delta)
 		palm.health = maxf(0.0, palm.health - 0.28 * day_delta)
@@ -529,5 +694,25 @@ func _advance_growth(day_delta: float) -> void:
 			palm.growth_stage = PalmData.GrowthStage.YOUNG
 		else:
 			palm.growth_stage = PalmData.GrowthStage.SEEDLING
-		if palm.growth_stage != previous_stage:
+
+		if palm.growth_stage == PalmData.GrowthStage.MATURE and not palm.harvest_ready:
+			palm.fruit_cycle_days += day_delta
+			match palm.fruit_state:
+				PalmData.FruitState.NONE:
+					if palm.fruit_cycle_days >= INITIAL_FRUIT_DEVELOPING_DAYS:
+						palm.fruit_state = PalmData.FruitState.DEVELOPING
+				PalmData.FruitState.HARVESTED:
+					if palm.fruit_cycle_days >= 1.0:
+						palm.fruit_state = PalmData.FruitState.RECOVERING
+				PalmData.FruitState.RECOVERING:
+					if palm.fruit_cycle_days >= RECOVERY_DEVELOPING_DAYS:
+						palm.fruit_state = PalmData.FruitState.DEVELOPING
+				PalmData.FruitState.DEVELOPING:
+					var ready_day := INITIAL_FRUIT_READY_DAYS if palm.harvest_count == 0 else RECOVERY_READY_DAYS
+					if palm.fruit_cycle_days >= ready_day:
+						palm.fruit_quantity = float(estimate_ffb_yield(palm))
+						palm.harvest_ready = palm.fruit_quantity > 0.0
+						if palm.harvest_ready:
+							palm.fruit_state = PalmData.FruitState.READY
+		if palm.growth_stage != previous_stage or palm.fruit_state != previous_fruit_state:
 			palm_changed.emit(palm)

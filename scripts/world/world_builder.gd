@@ -7,6 +7,7 @@ const VisualFactory = preload("res://scripts/world/visual_factory.gd")
 const MAP_SIZE := Vector2(82.0, 68.0)
 const FIELD_CENTER := Vector3(8.0, 0.0, 10.0)
 const FIELD_SIZE := Vector2(24.0, 18.0)
+const MILL_SITE_CENTER := Vector3(30.0, 0.0, -14.0)
 
 var clearing_trees: Array[Node3D] = []
 var planting_markers: Array[MeshInstance3D] = []
@@ -39,6 +40,7 @@ func build_world(planting_slots: Array[Vector3]) -> void:
 	_build_paths_and_clearings()
 	_build_clearable_block()
 	_build_props()
+	_build_operations_asset_preview()
 	_build_planting_markers(planting_slots)
 	_build_placement_preview()
 	_build_selection_marker()
@@ -112,6 +114,17 @@ func _build_background_forest() -> void:
 				continue  # starting camp and shelter-placement clearing
 			if Vector2(x - 8.0, z - 10.0).length() < 17.0:
 				continue
+			var inside_mill_yard := (
+				absf(x - MILL_SITE_CENTER.x) < 9.0
+				and absf(z - MILL_SITE_CENTER.z) < 8.0
+			)
+			var on_mill_access_track := (
+				absf(x - MILL_SITE_CENTER.x) < 3.8
+				and z <= 1.0
+				and z >= MILL_SITE_CENTER.z
+			)
+			if inside_mill_yard or on_mill_access_track:
+				continue
 			if x < -36.0 or x > 39.0 or z < -31.0 or z > 32.0:
 				continue
 			tree_positions.append(Vector3(x, 0.0, z))
@@ -130,10 +143,13 @@ func _build_background_forest() -> void:
 	side_crowns.name = "ForestCanopyVariation"
 	add_child(side_crowns)
 
-	# A few mature palms sit on the distant forest edge as environmental landmarks.
-	for item in [Vector3(-35, 0, -24), Vector3(31, 0, -26), Vector3(35, 0, 22)]:
-		var palm := VisualFactory.create_palm(2)
-		palm.position = item
+	# A few curated generic palm forms sit on the forest edge as environmental landmarks.
+	var landmark_positions: Array[Vector3] = [
+		Vector3(-35, 0, -24), Vector3(31, 0, -26), Vector3(35, 0, 22)
+	]
+	for index in range(landmark_positions.size()):
+		var palm := VisualFactory.create_palm(2, 0, false, index)
+		palm.position = landmark_positions[index]
 		palm.scale = Vector3(0.86, 0.86, 0.86)
 		add_child(palm)
 
@@ -221,6 +237,26 @@ func _build_paths_and_clearings() -> void:
 	spur.position = Vector3(-1.5, -0.025, 7.8)
 	spur.material_override = VisualFactory.material(Color(0.31, 0.30, 0.23), 1.0)
 	add_child(spur)
+
+	# One static visual route links the FFB collection point and local-mill yard to the road.
+	var collection_track := MeshInstance3D.new()
+	collection_track.name = "CollectionAccessTrack"
+	var collection_track_mesh := PlaneMesh.new()
+	collection_track_mesh.size = Vector2(4.2, 16.0)
+	collection_track.mesh = collection_track_mesh
+	collection_track.position = Vector3(26.0, -0.024, 8.0)
+	collection_track.material_override = VisualFactory.material(Color(0.31, 0.30, 0.23), 1.0)
+	add_child(collection_track)
+
+	var mill_track := MeshInstance3D.new()
+	mill_track.name = "LocalMillAccessTrack"
+	var mill_track_mesh := PlaneMesh.new()
+	mill_track_mesh.size = Vector2(3.4, 14.0)
+	mill_track.mesh = mill_track_mesh
+	mill_track.position = Vector3(MILL_SITE_CENTER.x, -0.024, MILL_SITE_CENTER.z * 0.5)
+	mill_track.material_override = VisualFactory.material(Color(0.31, 0.30, 0.23), 1.0)
+	add_child(mill_track)
+
 	var camp_clear := MeshInstance3D.new()
 	camp_clear.name = "CampClearing"
 	var camp_mesh := PlaneMesh.new()
@@ -325,9 +361,6 @@ func _build_props() -> void:
 	var camp := VisualFactory.create_temporary_camp()
 	camp.position = Vector3(-27.0, 0.0, 17.0)
 	add_child(camp)
-	var pickup := VisualFactory.create_utility_vehicle()
-	pickup.position = Vector3(-31.0, 0.0, -0.8)
-	add_child(pickup)
 
 	# Barrels, stacked timber and field stones make the land feel occupied, without clutter.
 	var barrel := MeshInstance3D.new()
@@ -374,6 +407,15 @@ func _build_props() -> void:
 		if (
 			absf(rock_z) < 4.0
 			or (rock_x > -6.0 and rock_x < 21.0 and rock_z > -1.0 and rock_z < 21.0)
+			or (
+				absf(rock_x - MILL_SITE_CENTER.x) < 9.0
+				and absf(rock_z - MILL_SITE_CENTER.z) < 8.0
+			)
+			or (
+				absf(rock_x - MILL_SITE_CENTER.x) < 3.8
+				and rock_z <= 1.0
+				and rock_z >= MILL_SITE_CENTER.z
+			)
 		):
 			rock_x = -37.0 if index % 2 == 0 else 37.0
 		rock.position = Vector3(rock_x, 0.12, rock_z)
@@ -381,6 +423,22 @@ func _build_props() -> void:
 			Color(0.39, 0.39, 0.34).lerp(Color(0.27, 0.29, 0.27), rng.randf()), 0.98
 		)
 		add_child(rock)
+
+
+func _build_operations_asset_preview() -> void:
+	var tractor := VisualFactory.create_field_tractor_visual()
+	tractor.position = Vector3(19.6, 0.0, 13.4)
+	tractor.rotation.y = PI * 0.5
+	add_child(tractor)
+
+	var truck := VisualFactory.create_collection_pickup_visual()
+	truck.position = Vector3(26.0, 0.0, 13.8)
+	truck.rotation.y = PI
+	add_child(truck)
+
+	var mill_preview := VisualFactory.create_local_mill_visual_preview()
+	mill_preview.position = MILL_SITE_CENTER
+	add_child(mill_preview)
 
 
 func _build_planting_markers(slots: Array[Vector3]) -> void:

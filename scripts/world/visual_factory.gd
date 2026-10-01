@@ -1,8 +1,41 @@
 extends RefCounted
 class_name VisualFactory
 
-## Lightweight procedural models made from a small set of reusable primitive meshes.
-## No external assets or large textures are required.
+## Lightweight world visuals: procedural gameplay cues and curated generic GLB placeholders.
+## Palm FFB cues remain state-driven; operation GLBs do not implement or replace process stages.
+
+const PALM_YOUNG_SCENE: PackedScene = preload("res://assets/environment/palms/tree-palmdetailedshort.glb")
+const PALM_MATURE_SCENE: PackedScene = preload("res://assets/environment/palms/tree-palmdetailedtall.glb")
+const PALM_STANDARD_SCENE: PackedScene = preload("res://assets/environment/palms/tree-palm.glb")
+const PALM_BENT_SCENE: PackedScene = preload("res://assets/environment/palms/tree-palmbend.glb")
+
+const FIELD_TRACTOR_SCENE: PackedScene = preload(
+	"res://assets/environment/operations/kenney-car-kit/tractor.glb"
+)
+const COLLECTION_PICKUP_SCENE: PackedScene = preload(
+	"res://assets/environment/operations/kenney-car-kit/truck.glb"
+)
+const MILL_BUILDING_SCENE: PackedScene = preload(
+	"res://assets/environment/operations/kenney-city-kit-industrial/building-c.glb"
+)
+const MILL_CHIMNEY_SCENE: PackedScene = preload(
+	"res://assets/environment/operations/kenney-city-kit-industrial/chimney-large.glb"
+)
+const MILL_TANK_SCENE: PackedScene = preload(
+	"res://assets/environment/operations/kenney-city-kit-industrial/detail-tank-large.glb"
+)
+const MILL_CONVEYOR_SCENE: PackedScene = preload(
+	"res://assets/environment/operations/kenney-factory-kit/conveyor-v1.glb"
+)
+const MILL_HOPPER_SCENE: PackedScene = preload(
+	"res://assets/environment/operations/kenney-factory-kit/hopper-high-round.glb"
+)
+const MILL_PIPE_SCENE: PackedScene = preload(
+	"res://assets/environment/operations/kenney-factory-kit/pipe-large-valve.glb"
+)
+
+const PALM_LEAF_TINT := Color(0.29, 0.43, 0.16)
+const PALM_BARK_TINT := Color(0.43, 0.31, 0.19)
 
 
 static func material(
@@ -77,6 +110,98 @@ static func cylinder(
 	return instance
 
 
+static func create_imported_visual_placeholder(
+	scene: PackedScene, instance_name: String, scale_factor: float = 1.0
+) -> Node3D:
+	var root := Node3D.new()
+	root.name = instance_name
+	root.set_meta("source_glb", scene.resource_path)
+	root.set_meta("visual_status", "generic_placeholder_only")
+	root.set_meta("asset_scale", scale_factor)
+	var model := scene.instantiate() as Node3D
+	if model == null:
+		push_error("Imported visual did not instantiate as Node3D: %s" % scene.resource_path)
+		return root
+	model.name = "ImportedModel"
+	model.scale = Vector3.ONE * scale_factor
+	root.add_child(model)
+	return root
+
+
+static func create_field_tractor_visual() -> Node3D:
+	return create_imported_visual_placeholder(FIELD_TRACTOR_SCENE, "FieldTractorVisualProxy")
+
+
+static func create_collection_pickup_visual() -> Node3D:
+	return create_imported_visual_placeholder(
+		COLLECTION_PICKUP_SCENE, "GenericCollectionPickupVisualProxy"
+	)
+
+
+static func create_local_mill_visual_preview() -> Node3D:
+	var root := Node3D.new()
+	root.name = "LocalMillVisualPreview"
+	root.set_meta("visual_status", "generic_visual_placeholders_only")
+	root.set_meta("process_chain_status", "not_simulated")
+
+	var yard := MeshInstance3D.new()
+	yard.name = "MillYardPad"
+	var yard_mesh := PlaneMesh.new()
+	yard_mesh.size = Vector2(16.0, 14.0)
+	yard.mesh = yard_mesh
+	yard.position = Vector3(0.0, -0.045, 0.0)
+	yard.material_override = material(Color(0.34, 0.34, 0.29), 0.96)
+	root.add_child(yard)
+
+	var shell := create_imported_visual_placeholder(
+		MILL_BUILDING_SCENE, "GenericMillShellProxy", 3.0
+	)
+	root.add_child(shell)
+	var chimney := create_imported_visual_placeholder(
+		MILL_CHIMNEY_SCENE, "GenericStackProxy", 2.2
+	)
+	chimney.position = Vector3(-4.2, 0.0, -0.6)
+	root.add_child(chimney)
+	var tank := create_imported_visual_placeholder(
+		MILL_TANK_SCENE, "GenericTankProxy", 2.2
+	)
+	tank.position = Vector3(4.9, 0.0, -0.6)
+	root.add_child(tank)
+	var hopper := create_imported_visual_placeholder(
+		MILL_HOPPER_SCENE, "GenericHopperProxy", 2.1
+	)
+	hopper.position = Vector3(-4.2, 0.0, 4.1)
+	root.add_child(hopper)
+	var conveyor := create_imported_visual_placeholder(
+		MILL_CONVEYOR_SCENE, "GenericConveyorProxy", 2.0
+	)
+	conveyor.position = Vector3(0.0, 0.0, 4.7)
+	root.add_child(conveyor)
+	var pipe := create_imported_visual_placeholder(
+		MILL_PIPE_SCENE, "GenericPipeAndValveProxy", 2.0
+	)
+	pipe.position = Vector3(4.9, 0.0, 3.2)
+	root.add_child(pipe)
+
+	var sign := box(
+		root,
+		"MillVisualStatusSign",
+		Vector3(6.0, 1.18, 0.16),
+		Vector3(0.0, 1.65, 6.15),
+		Color(0.24, 0.34, 0.25)
+	)
+	var sign_label := Label3D.new()
+	sign_label.name = "VisualConceptLabel"
+	sign_label.text = "LOCAL MILL - VISUAL CONCEPT\nPROCESS FLOW NOT SIMULATED"
+	sign_label.font_size = 26
+	sign_label.outline_size = 5
+	sign_label.modulate = Color(0.97, 0.93, 0.78)
+	sign_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sign_label.position = Vector3(0.0, 0.0, 0.11)
+	sign.add_child(sign_label)
+	return root
+
+
 static func create_forest_tree(
 	height: float = 5.4, spread: float = 1.4, tint: Color = Color(0.19, 0.34, 0.19)
 ) -> Node3D:
@@ -116,13 +241,17 @@ static func create_forest_tree(
 	return root
 
 
-static func create_palm(growth_stage: int, fruit_state: int = 0, harvest_ready: bool = false) -> Node3D:
+static func create_palm(
+	growth_stage: int, fruit_state: int = 0, harvest_ready: bool = false, variant_index: int = 0
+) -> Node3D:
 	var root := Node3D.new()
-	root.name = "OilPalm"
+	root.name = "PlantationPalm"
 	var trunk_height: float
 	var trunk_radius: float
 	var crown_radius: float
 	var leaf_count: int
+	var imported_scene: PackedScene = null
+	var imported_scale := 1.0
 	match growth_stage:
 		0:
 			trunk_height = 0.33
@@ -130,72 +259,133 @@ static func create_palm(growth_stage: int, fruit_state: int = 0, harvest_ready: 
 			crown_radius = 0.48
 			leaf_count = 5
 		1:
-			trunk_height = 0.78
+			trunk_height = 1.8
 			trunk_radius = 0.085
 			crown_radius = 0.88
 			leaf_count = 6
+			imported_scene = PALM_YOUNG_SCENE
+			imported_scale = 1.8
 		2:
-			trunk_height = 2.8
+			trunk_height = 4.45
 			trunk_radius = 0.18
 			crown_radius = 1.95
 			leaf_count = 8
+			match variant_index % 3:
+				0:
+					imported_scene = PALM_MATURE_SCENE
+					imported_scale = 3.7
+				1:
+					imported_scene = PALM_STANDARD_SCENE
+					imported_scale = 3.3
+				_:
+					imported_scene = PALM_BENT_SCENE
+					imported_scale = 3.6
 		_:
-			trunk_height = 2.8
+			trunk_height = 4.45
 			trunk_radius = 0.18
 			crown_radius = 1.95
 			leaf_count = 8
+			imported_scene = PALM_MATURE_SCENE
+			imported_scale = 3.7
 
-	cylinder(
-		root,
-		"Trunk",
-		trunk_height,
-		trunk_radius,
-		trunk_radius * 0.78,
-		Vector3(0, trunk_height * 0.5, 0),
-		Color(0.43, 0.31, 0.19),
-		10
-	)
-	var crown := Vector3(0, trunk_height + 0.02, 0)
-	sphere(
-		root,
-		"CrownBase",
-		crown_radius * 0.18,
-		crown,
-		Color(0.36, 0.43, 0.19),
-		Vector3(1.0, 0.68, 1.0),
-		true
-	)
-	for index in range(leaf_count):
-		var angle := TAU * float(index) / float(leaf_count) + 0.17
-		var length := crown_radius * (1.12 if index % 2 == 0 else 0.96)
-		var frond := MeshInstance3D.new()
-		frond.name = "Frond_%02d" % index
-		frond.mesh = _make_frond_mesh(
-			length,
-			crown_radius * 0.42,
-			Color(0.23, 0.38, 0.13) if index % 2 == 0 else Color(0.29, 0.43, 0.16)
+	if imported_scene != null:
+		var imported_palm := _instantiate_palm_model(imported_scene, imported_scale)
+		if imported_palm != null:
+			root.add_child(imported_palm)
+	else:
+		# Keep the first seedling stage simple and cheap; older stages use curated GLB silhouettes.
+		cylinder(
+			root,
+			"Trunk",
+			trunk_height,
+			trunk_radius,
+			trunk_radius * 0.78,
+			Vector3(0, trunk_height * 0.5, 0),
+			PALM_BARK_TINT,
+			10
 		)
-		frond.position = crown
-		frond.rotation.y = -angle
-		root.add_child(frond)
+		var crown := Vector3(0, trunk_height + 0.02, 0)
+		sphere(
+			root,
+			"CrownBase",
+			crown_radius * 0.18,
+			crown,
+			Color(0.36, 0.43, 0.19),
+			Vector3(1.0, 0.68, 1.0),
+			true
+		)
+		for index in range(leaf_count):
+			var angle := TAU * float(index) / float(leaf_count) + 0.17
+			var length := crown_radius * (1.12 if index % 2 == 0 else 0.96)
+			var frond := MeshInstance3D.new()
+			frond.name = "Frond_%02d" % index
+			frond.mesh = _make_frond_mesh(
+				length,
+				crown_radius * 0.42,
+				Color(0.23, 0.38, 0.13) if index % 2 == 0 else Color(0.29, 0.43, 0.16)
+			)
+			frond.position = crown
+			frond.rotation.y = -angle
+			root.add_child(frond)
 
-	# Small, high-contrast procedural bunches make fruit development readable at game scale.
+	# State-driven FFB cues stay procedural; the Nature Kit contains no fruit-bunch model.
 	if growth_stage >= 2 and (fruit_state == 1 or fruit_state == 2):
 		var bunch_color := Color(0.66, 0.38, 0.12) if fruit_state == 1 else Color(0.86, 0.24, 0.08)
 		for index in range(3):
 			var angle := TAU * float(index) / 3.0 + 0.35
 			var bunch_position := Vector3(
 				cos(angle) * 0.28,
-				trunk_height * 0.61 - float(index % 2) * 0.13,
+				trunk_height * 0.75 - float(index % 2) * 0.13,
 				sin(angle) * 0.28
 			)
-			var bunch := sphere(root, "FruitBunch_%d" % index, 0.26, bunch_position, bunch_color, Vector3(1.0, 1.15, 0.9), true)
+			var bunch := sphere(
+				root,
+				"FruitBunch_%d" % index,
+				0.26,
+				bunch_position,
+				bunch_color,
+				Vector3(1.0, 1.15, 0.9),
+				true
+			)
 			if harvest_ready:
 				var ripe_material := bunch.material_override as StandardMaterial3D
 				ripe_material.emission_enabled = true
 				ripe_material.emission = Color(0.68, 0.12, 0.015)
 				ripe_material.emission_energy_multiplier = 0.22
 	return root
+
+
+static func _instantiate_palm_model(scene: PackedScene, model_scale: float) -> Node3D:
+	if scene == null:
+		push_error("Required curated palm GLB scene is not available.")
+		return null
+	var model := scene.instantiate() as Node3D
+	if model == null:
+		push_error("Curated palm GLB did not instantiate a Node3D root.")
+		return null
+	model.name = "ImportedPalmModel"
+	model.scale = Vector3.ONE * model_scale
+	model.set_meta("source_glb", scene.resource_path)
+	_apply_palm_palette(model)
+	return model
+
+
+static func _apply_palm_palette(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh != null:
+			for surface_index in range(mesh_instance.mesh.get_surface_count()):
+				var source_material := mesh_instance.get_active_material(surface_index)
+				if source_material is StandardMaterial3D:
+					var original := source_material as StandardMaterial3D
+					var local_material := original.duplicate() as StandardMaterial3D
+					if original.albedo_color.g > original.albedo_color.r * 1.5:
+						local_material.albedo_color = PALM_LEAF_TINT
+					elif original.albedo_color.r > original.albedo_color.g * 1.2:
+						local_material.albedo_color = PALM_BARK_TINT
+					mesh_instance.set_surface_override_material(surface_index, local_material)
+	for child in node.get_children():
+		_apply_palm_palette(child)
 
 
 static func _make_frond_mesh(length: float, drop: float, leaf_color: Color) -> ArrayMesh:

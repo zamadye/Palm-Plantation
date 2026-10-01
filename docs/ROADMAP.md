@@ -27,18 +27,18 @@ All eight are part of the intended strategy-management loop. Current implementat
 
 ### Accelerated-but-believable realism
 
-Acceleration is a presentation and session-length choice, not permission to make biological or commercial claims from arbitrary values. Preserve cause and effect, season/year ordering, resource constraints, lead times, harvest windows, and trade-offs. Compress elapsed time transparently; do not depict the current 8/45-day growth thresholds, 15/20-day fruit thresholds, 180 kg base yield, or `$1/kg` price as real-world data. M3 must replace or explicitly scenario-label those prototype parameters using traceable domain sources and review. Show the game calendar and communicate that the model is simplified, not operational agronomic advice.
+Acceleration is a presentation and session-length choice, not permission to make biological or commercial claims from arbitrary values. Preserve cause and effect, season/year ordering, resource constraints, lead times, harvest windows, and trade-offs. Compress elapsed time transparently. The native Godot M3 working slice now has a 30-day model month, named scenario periods, field-age stages, a first commercial window near model year three, an age-based yield curve, condition/input effects, and a month-keyed per-palm harvest-window outlook; see [`CROP_MODEL.md`](CROP_MODEL.md). Those coefficients remain scenario assumptions pending qualified review and must not be presented as local agronomic advice. Browser prototype values remain separate. **`$1/kg` is a prototype fixture value unless explicitly promoted to a sourced market-price assumption.** Market-price simulation belongs to M6; M3 must not silently acquire it merely because the prototype has a fixed price. Show the game calendar and communicate that the model is simplified.
 
 ## Milestone status snapshot
 
-`COMPLETE` is reserved for milestones whose acceptance criteria and test gates all pass. Existing code, a successful browser-only test, or a parsed script is not enough. M2 is the current feature milestone even though M0/M1 validation debt remains; earlier gates are not waived.
+`COMPLETE` is reserved for milestones whose acceptance criteria and test gates all pass. Existing code, a successful browser-only test, or a parsed script is not enough. The user authorized a curated palm subset and later a bounded generic operation-visual subset; neither changes M2 visual/input acceptance or M3 qualified-review gates. Operation assets are static placeholders and do not replace process stages. M0/M1 validation debt is not waived.
 
 | ID | Milestone | Status | Exit condition in one line |
 |---|---|---|---|
 | M0 | Direction, scope, and production validation foundation | **IN PROGRESS** | Documents are accepted, Godot baseline is reproducible, test commands and target device are agreed. |
 | M1 | Estate establishment | **IN PROGRESS — validation debt** | Native fresh-state shelter → clearing → planting flow passes all resource, slot, and restart-free acceptance cases. |
-| M2 | First Harvest | **IN PROGRESS — CURRENT** | Native harvest → delivery → sale → repeat cycle passes reproducible tests with no duplicated or lost FFB/cash. |
-| M3 | Credible crop and agronomy model | **NOT STARTED** | Accelerated calendar and agronomy parameters are sourced, reviewed, deterministic, and explainable. |
+| M2 | First Harvest | **FUNCTIONALLY IMPLEMENTED / NATIVE ACCEPTANCE IN PROGRESS** | Godot 4.3 import, 109 simulation assertions, and 110 structural assertions pass; first harvest is tested at the 36-model-month boundary. Native visible-renderer and physical-input acceptance remains UNVERIFIED, so M2 is not COMPLETE. |
+| M3 | Credible Crop and Agronomy Model | **IN PROGRESS** | Calendar/cohort behavior, scenario assumptions, maturity-boundary timing, and deterministic eight-model-year baseline/limited-input/stress trajectories are covered by 65 focused checks; named owner and qualified review remain open. |
 | M4 | Workforce and field operations | **NOT STARTED** | Planned crews can be assigned work and move/complete/deliver tasks without deadlocks or lost work. |
 | M5 | Estate strategy and finance | **NOT STARTED** | The player can compare bounded development choices using a complete, auditable operating ledger. |
 | M6 | Mill, processing, and markets | **NOT STARTED** | FFB flows through a capacity-limited local outlet to a transparent, testable sale result. |
@@ -46,6 +46,8 @@ Acceleration is a presentation and session-length choice, not permission to make
 | M8 | Onboarding, content, and presentation | **NOT STARTED** | A new player can complete the campaign’s core loop with legible, accessible mobile UI and clear feedback. |
 | M9 | Persistence, reliability, and mobile performance | **NOT STARTED** | Save/load, performance budgets, compatibility, and recovery gates pass on the agreed baseline device. |
 | M10 | Release candidate and launch | **NOT STARTED** | All release criteria, legal/licensing checks, builds, and final-device acceptance are complete. |
+
+**Execution note:** the user authorized the curated four-model Nature Kit palm subset and later a small CC0 operation-visual subset documented in [`ASSET_PLAN.md`](ASSET_PLAN.md). The operation assets are static generic placeholders; they do not implement or replace any process stage, and FFB cues remain procedural. Neither asset slice waives M2's native rendered/input gate or M3's qualified-review gate. The browser/Three.js build remains a separate prototype, and the five existing HUD action icons are retained.
 
 ## Milestones and acceptance gates
 
@@ -81,11 +83,14 @@ Acceleration is a presentation and session-length choice, not permission to make
 - Completion moves exactly the computed FFB quantity from palm to worker, then to collection; no quantity appears in sold stock before delivery.
 - Sale creates exactly one transaction, clears exactly the sold stock, and applies the fixture price once. The current `$1/kg` is a placeholder rule, not a launch-market acceptance.
 - After the recovery/regrowth interval, the same palm can produce and complete another harvest without being removed, double-counted, or sold twice.
-- Browser and Godot acceptance suites are separately reproducible. M2 remains **IN PROGRESS** until the Godot project is run and the native suite passes; the evidence must be checked in or reproducible from documented repository commands.
+- Browser and Godot acceptance suites are separately reproducible and reported separately. M2 remains **FUNCTIONALLY IMPLEMENTED / NATIVE ACCEPTANCE IN PROGRESS** until the native suite and all native acceptance gates, including the main-scene interaction/rendering gate below, pass; evidence must be checked in or reproducible from documented repository commands.
+- The actual native main-scene harvest → delivery → sale → repeat interaction is accepted on a usable non-Dummy renderer: world, palms, shelter, worker, and HUD are visibly verified, and the supported input path works. A headless scene-graph smoke does not satisfy this visual/input gate.
 
-### M3 — Credible crop and agronomy model
+### M3 — Credible Crop and Agronomy Model
 
 **Scope:** replace placeholder time/yield/health assumptions with a compact, transparent model. Model only variables needed to make estate decisions, not a research-grade agronomy simulator.
+
+**Boundary:** M3 owns crop/calendar/agronomy assumptions. `$1/kg` is a prototype fixture value unless explicitly promoted to a sourced market-price assumption; market-price simulation remains within M6 — Mill, Processing, and Markets.
 
 **Acceptance:**
 - Every production parameter (growth/maturity timing, yield range, input effects, pest/season effects) has a source or an explicitly labeled scenario assumption, units, range, and review owner in the design/data notes.

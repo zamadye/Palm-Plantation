@@ -8,14 +8,10 @@ const BuildingData = preload("res://scripts/simulation/building_record.gd")
 const LandZoneData = preload("res://scripts/simulation/land_zone_record.gd")
 const TaskData = preload("res://scripts/simulation/task_record.gd")
 const CollectionData = preload("res://scripts/simulation/ffb_collection_record.gd")
+const CropModel = preload("res://scripts/simulation/crop_model.gd")
 
 const FIELD_CENTER := Vector3(8.0, 0.0, 10.0)
-const BASE_FFB_YIELD_KG := 180.0
 const PROTOTYPE_FFB_PRICE_PER_KG := 1.0
-const INITIAL_FRUIT_DEVELOPING_DAYS := 4.0
-const INITIAL_FRUIT_READY_DAYS := 15.0
-const RECOVERY_DEVELOPING_DAYS := 8.0
-const RECOVERY_READY_DAYS := 20.0
 const FIELD_SIZE := Vector2(24.0, 18.0)
 const DAY_LENGTH_SECONDS := 3.0
 const CLEARING_DURATION := 12.0
@@ -105,13 +101,15 @@ func _process(delta: float) -> void:
 	if worker == null:
 		return
 	var scaled_delta := delta * game_speed
-	game_days_elapsed += scaled_delta / DAY_LENGTH_SECONDS
+	var growth_day_delta := scaled_delta / DAY_LENGTH_SECONDS
+	var growth_start_day := game_days_elapsed
+	game_days_elapsed += growth_day_delta
 	var new_day := int(floor(game_days_elapsed)) + 1
 	if new_day != day_number:
 		day_number = new_day
 		resources_changed.emit()
 
-	_advance_growth(scaled_delta / DAY_LENGTH_SECONDS)
+	_advance_growth(growth_day_delta, growth_start_day)
 	_update_worker(delta, scaled_delta)
 	_update_player(delta)
 
@@ -128,6 +126,18 @@ func _create_planting_slots() -> void:
 
 func get_planting_slots() -> Array[Vector3]:
 	return planting_slots.duplicate()
+
+
+func get_calendar_label() -> String:
+	return CropModel.calendar_label(game_days_elapsed)
+
+
+func get_current_season_name() -> String:
+	return CropModel.season_name_at(game_days_elapsed)
+
+
+func get_current_season_index() -> int:
+	return CropModel.season_index_at(game_days_elapsed)
 
 
 func is_valid_shelter_location(point: Vector3) -> bool:
@@ -316,9 +326,9 @@ func get_ready_harvest_count() -> int:
 func estimate_ffb_yield(palm) -> int:
 	if palm == null or int(palm.growth_stage) != int(PalmData.GrowthStage.MATURE):
 		return 0
-	var maturity_factor := 1.0
-	var health_factor := clampf(palm.health / 100.0, 0.25, 1.0)
-	return int(round(BASE_FFB_YIELD_KG * maturity_factor * health_factor))
+	return CropModel.estimate_harvest_lot_kg(
+		palm.age, palm.health, palm.pest_risk, palm.fertilizer
+	)
 
 
 func sell_ffb() -> bool:
@@ -357,6 +367,92 @@ func get_palm(palm_id: String):
 		if palm.id == palm_id:
 			return palm
 	return null
+
+
+func get_cohort_summaries() -> Array[Dictionary]:
+	var grouped: Dictionary = {}
+	for palm in palms:
+		var cohort_id := str(palm.cohort_id)
+		if cohort_id.is_empty():
+			cohort_id = CropModel.cohort_id_at(palm.planted_day)
+		if not grouped.has(cohort_id):
+			grouped[cohort_id] = {
+				"id": cohort_id,
+				"planted_day": float(palm.planted_day),
+				"palm_count": 0,
+				"seedling_count": 0,
+				"young_count": 0,
+				"mature_count": 0,
+				"ready_count": 0,
+				"ready_kg": 0,
+				"within_model_month_count": 0,
+				"within_model_month_kg": 0,
+				"earliest_window_days": -1.0,
+				"earliest_window_calendar": "",
+				"health_total": 0.0,
+				"fertilizer_total": 0.0,
+				"pest_index_total": 0.0,
+				"age_years_total": 0.0
+			}
+		var cohort: Dictionary = grouped[cohort_id]
+		cohort["palm_count"] = int(cohort.palm_count) + 1
+		cohort["age_years_total"] = float(cohort.age_years_total) + CropModel.game_days_to_years(palm.age)
+		cohort["health_total"] = float(cohort.health_total) + clampf(palm.health, 0.0, 100.0)
+		cohort["fertilizer_total"] = float(cohort.fertilizer_total) + clampf(palm.fertilizer, 0.0, 100.0)
+		cohort["pest_index_total"] = float(cohort.pest_index_total) + clampf(palm.pest_risk, 0.0, 100.0)
+		match int(palm.growth_stage):
+			PalmData.GrowthStage.SEEDLING:
+				cohort["seedling_count"] = int(cohort.seedling_count) + 1
+			PalmData.GrowthStage.YOUNG:
+				cohort["young_count"] = int(cohort.young_count) + 1
+			PalmData.GrowthStage.MATURE:
+				cohort["mature_count"] = int(cohort.mature_count) + 1
+
+		var days_to_window := CropModel.days_to_next_harvest_window(
+			palm.age, palm.fruit_cycle_days, palm.harvest_count, palm.harvest_ready
+		)
+		var projected_lot_kg := 0
+		if palm.harvest_ready:
+			cohort["ready_count"] = int(cohort.ready_count) + 1
+			projected_lot_kg = maxi(0, int(round(palm.fruit_quantity)))
+			cohort["ready_kg"] = int(cohort.ready_kg) + projected_lot_kg
+		else:
+			projected_lot_kg = CropModel.project_harvest_lot_kg(
+				palm.age,
+				palm.health,
+				palm.pest_risk,
+				palm.fertilizer,
+				game_days_elapsed,
+				days_to_window
+			)
+
+		if projected_lot_kg > 0:
+			var window_days := 0.0 if palm.harvest_ready else days_to_window
+			if float(cohort.earliest_window_days) < 0.0 or window_days < float(cohort.earliest_window_days):
+				cohort["earliest_window_days"] = window_days
+				cohort["earliest_window_calendar"] = CropModel.calendar_label(game_days_elapsed + window_days)
+			if not palm.harvest_ready and window_days <= CropModel.COHORT_OUTLOOK_HORIZON_DAYS + 0.000001:
+				cohort["within_model_month_count"] = int(cohort.within_model_month_count) + 1
+				cohort["within_model_month_kg"] = int(cohort.within_model_month_kg) + projected_lot_kg
+		grouped[cohort_id] = cohort
+
+	var cohort_ids: Array = grouped.keys()
+	cohort_ids.sort()
+	var summaries: Array[Dictionary] = []
+	for cohort_id in cohort_ids:
+		var cohort: Dictionary = grouped[cohort_id]
+		var palm_count := maxi(1, int(cohort.palm_count))
+		var divisor := float(palm_count)
+		cohort["average_age_years"] = float(cohort.age_years_total) / divisor
+		cohort["average_health_percent"] = float(cohort.health_total) / divisor
+		cohort["average_fertilizer_reserve"] = float(cohort.fertilizer_total) / divisor
+		cohort["average_pest_index"] = float(cohort.pest_index_total) / divisor
+		cohort.erase("age_years_total")
+		cohort.erase("health_total")
+		cohort.erase("fertilizer_total")
+		cohort.erase("pest_index_total")
+		summaries.append(cohort)
+	return summaries
 
 
 func get_task(task_id: String):
@@ -425,7 +521,7 @@ func get_instruction() -> String:
 					return "Select a READY TO HARVEST palm or block to assign the harvest crew."
 			for palm in palms:
 				if int(palm.growth_stage) == int(PalmData.GrowthStage.MATURE):
-					return "Mature palms develop fruit over accelerated time; maintain health to support yield."
+					return "First FFB window follows the long fruit-development stage; monitor season, health, and pest pressure."
 			return "Select a palm to send the worker to fertilize or treat pests."
 	return "Watch the plantation grow."
 
@@ -442,7 +538,7 @@ func get_progress_text() -> String:
 	):
 		var task_label: String = worker.job_type.replace("_", " ").capitalize()
 		return "%s  ·  %d%%" % [task_label, _milestone_percent(worker.job_progress)]
-	return "DAY %02d  ·  GAME SPEED x%.0f" % [day_number, game_speed]
+	return "%s  ·  GAME SPEED x%.0f" % [get_calendar_label(), game_speed]
 
 
 func _milestone_percent(progress: float) -> int:
@@ -596,6 +692,8 @@ func _finish_task(task) -> void:
 			palm.id = "palm_%02d" % (slot_index + 1)
 			palm.slot_index = slot_index
 			palm.position = planting_slots[slot_index]
+			palm.planted_day = game_days_elapsed
+			palm.cohort_id = CropModel.cohort_id_at(game_days_elapsed)
 			palms.append(palm)
 			palm_planted.emit(palm)
 			toast.emit(
@@ -618,10 +716,12 @@ func _finish_task(task) -> void:
 			for palm in target_palms:
 				if task_type == "FERTILIZING":
 					palm.fertilizer = 100.0
-					palm.health = minf(100.0, palm.health + 10.0)
+					palm.health = minf(100.0, palm.health + CropModel.FERTILIZER_HEALTH_BONUS)
 				else:
-					palm.pest_risk = maxf(0.0, palm.pest_risk - 25.0)
-					palm.health = minf(100.0, palm.health + 10.0)
+					palm.pest_risk = maxf(
+						0.0, palm.pest_risk - CropModel.PEST_TREATMENT_RISK_REDUCTION
+					)
+					palm.health = minf(100.0, palm.health + CropModel.PEST_TREATMENT_HEALTH_BONUS)
 				palm_changed.emit(palm)
 			toast.emit(
 				"Fertilizing complete. Health +10." if task_type == "FERTILIZING" else "Pest treatment complete. Health +10.",
@@ -678,41 +778,58 @@ func _finish_task(task) -> void:
 	job_changed.emit()
 
 
-func _advance_growth(day_delta: float) -> void:
+func _advance_growth(day_delta: float, start_game_day: float = -1.0) -> void:
 	if day_delta <= 0.0:
 		return
+	var condition_start_day := start_game_day
+	if condition_start_day < 0.0:
+		condition_start_day = maxf(0.0, game_days_elapsed - day_delta)
 	for palm in palms:
+		var previous_age: float = palm.age
 		var previous_stage: int = palm.growth_stage
 		var previous_fruit_state: int = palm.fruit_state
 		palm.age += day_delta
-		palm.fertilizer = maxf(0.0, palm.fertilizer - 0.55 * day_delta)
-		palm.health = maxf(0.0, palm.health - 0.28 * day_delta)
-		palm.pest_risk = minf(100.0, palm.pest_risk + 0.40 * day_delta)
-		if palm.age >= 45.0:
-			palm.growth_stage = PalmData.GrowthStage.MATURE
-		elif palm.age >= 8.0:
-			palm.growth_stage = PalmData.GrowthStage.YOUNG
-		else:
-			palm.growth_stage = PalmData.GrowthStage.SEEDLING
+		palm.growth_stage = CropModel.growth_stage_for_age(palm.age)
+		var condition := CropModel.advance_condition(
+			palm.health, palm.pest_risk, palm.fertilizer, condition_start_day, day_delta
+		)
+		palm.health = float(condition.health)
+		palm.pest_risk = float(condition.pest_risk)
+		palm.fertilizer = float(condition.fertilizer)
 
 		if palm.growth_stage == PalmData.GrowthStage.MATURE and not palm.harvest_ready:
-			palm.fruit_cycle_days += day_delta
-			match palm.fruit_state:
-				PalmData.FruitState.NONE:
-					if palm.fruit_cycle_days >= INITIAL_FRUIT_DEVELOPING_DAYS:
-						palm.fruit_state = PalmData.FruitState.DEVELOPING
-				PalmData.FruitState.HARVESTED:
-					if palm.fruit_cycle_days >= 1.0:
-						palm.fruit_state = PalmData.FruitState.RECOVERING
-				PalmData.FruitState.RECOVERING:
-					if palm.fruit_cycle_days >= RECOVERY_DEVELOPING_DAYS:
-						palm.fruit_state = PalmData.FruitState.DEVELOPING
-				PalmData.FruitState.DEVELOPING:
-					var ready_day := INITIAL_FRUIT_READY_DAYS if palm.harvest_count == 0 else RECOVERY_READY_DAYS
-					if palm.fruit_cycle_days >= ready_day:
-						palm.fruit_quantity = float(estimate_ffb_yield(palm))
-						palm.harvest_ready = palm.fruit_quantity > 0.0
-						if palm.harvest_ready:
-							palm.fruit_state = PalmData.FruitState.READY
+			# Only count days spent mature; a timestep crossing the maturity boundary
+			# must not credit the preceding immature portion to fruit development.
+			var mature_days_delta := maxf(
+				0.0, palm.age - maxf(previous_age, CropModel.MATURE_STAGE_START_DAYS)
+			)
+			palm.fruit_cycle_days += mature_days_delta
+			var transition_ready := true
+			while transition_ready:
+				transition_ready = false
+				match palm.fruit_state:
+					PalmData.FruitState.NONE:
+						if palm.fruit_cycle_days >= CropModel.FIRST_LOT_DEVELOPING_DAYS:
+							palm.fruit_state = PalmData.FruitState.DEVELOPING
+							transition_ready = true
+					PalmData.FruitState.HARVESTED:
+						if palm.fruit_cycle_days >= CropModel.RECOVERY_START_DAYS:
+							palm.fruit_state = PalmData.FruitState.RECOVERING
+							transition_ready = true
+					PalmData.FruitState.RECOVERING:
+						if palm.fruit_cycle_days >= CropModel.RECOVERY_DEVELOPING_DAYS:
+							palm.fruit_state = PalmData.FruitState.DEVELOPING
+							transition_ready = true
+					PalmData.FruitState.DEVELOPING:
+						var ready_day := (
+							CropModel.FIRST_LOT_READY_DAYS
+							if palm.harvest_count == 0
+							else CropModel.REPEAT_LOT_READY_DAYS
+						)
+						if palm.fruit_cycle_days >= ready_day:
+							palm.fruit_quantity = float(estimate_ffb_yield(palm))
+							palm.harvest_ready = palm.fruit_quantity > 0.0
+							if palm.harvest_ready:
+								palm.fruit_state = PalmData.FruitState.READY
 		if palm.growth_stage != previous_stage or palm.fruit_state != previous_fruit_state:
 			palm_changed.emit(palm)

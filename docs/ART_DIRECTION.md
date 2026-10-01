@@ -8,9 +8,9 @@ The camera/map view is a core design tool, not a temporary placeholder for a fir
 
 ## Audited baseline
 
-The current Godot world is procedurally assembled from primitive meshes and materials. It includes terrain tiles, MultiMesh background forest, road/clearing/pond, a fixed block and planting markers, procedural palms/fruit, a shelter, characters, collection point, selection indicators, and a CanvasLayer HUD. The single standalone game asset is `assets/icon.svg`. There are no imported character models, texture sets, audio files, or authored environment packs in the audited baseline.
+The audited Godot baseline was procedurally assembled from primitive meshes and materials. The current working tree still uses procedural terrain, MultiMesh background forest, road/clearing/pond, planting markers, seedling palm/fruit cues, shelter, characters, collection point, selection indicators, and a CanvasLayer HUD, but imports four curated generic Kenney Nature Kit palm GLBs for young/mature crop forms and distant landmarks. It also places eight generic Kenney operation GLBs as static tractor, pickup, and mill-yard placeholders; none is process-specific or implements process logic. `assets/icon.svg` and the five native action SVGs are first-party; palm and operation source/license details are in their respective `PROVENANCE.md` files. There are no imported character models or audio files; the operation subset contributes two small Kenney color maps only.
 
-Current geometry and palette demonstrate a prototype, not final art. Do not mark visual work complete because procedural meshes render in source code; the native renderer, mobile readability, and final art acceptance remain unverified.
+Current geometry and palette demonstrate a prototype, not final art. The generic palm GLBs are not verified *Elaeis guineensis* models; FFB cues remain procedural. Do not mark visual work complete because resources import or structural meshes exist; native renderer, mobile readability, performance, and final art acceptance remain unverified.
 
 ## Visual principles
 

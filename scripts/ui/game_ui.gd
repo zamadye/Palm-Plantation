@@ -3,6 +3,15 @@ class_name PlantationGameUI
 
 ## Mobile-first strategy HUD. UI sends intent to Main; simulation never owns UI nodes.
 const PalmData = preload("res://scripts/simulation/palm_record.gd")
+const CropModel = preload("res://scripts/simulation/crop_model.gd")
+const SEASON_SHORT_NAMES := ["WET", "SHIFT", "DRY", "SHIFT"]
+const ACTION_ICONS := {
+	"BUILD": preload("res://assets/ui/icons/build.svg"),
+	"LAND": preload("res://assets/ui/icons/land.svg"),
+	"PLANT": preload("res://assets/ui/icons/plant.svg"),
+	"WORKERS": preload("res://assets/ui/icons/workers.svg"),
+	"MANAGEMENT": preload("res://assets/ui/icons/management.svg")
+}
 
 signal action_selected(action: String)
 signal speed_selected(speed: float)
@@ -202,20 +211,41 @@ func _build_action_bar() -> void:
 	row.add_theme_constant_override("separation", 6)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(row)
-	var actions := [
-		["BUILD", "⌂"], ["LAND", "▧"], ["PLANT", "♧"], ["WORKERS", "◎"], ["MANAGEMENT", "▤"]
-	]
-	for item in actions:
-		var action: String = item[0]
+	var actions := ["BUILD", "LAND", "PLANT", "WORKERS", "MANAGEMENT"]
+	for action_value in actions:
+		var action := str(action_value)
 		var button := Button.new()
 		button.name = "Action_%s" % action
 		button.custom_minimum_size = Vector2(82, 58)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.toggle_mode = true
 		button.focus_mode = Control.FOCUS_NONE
-		button.text = "%s\n%s" % [item[1], action]
+		button.tooltip_text = action.capitalize()
 		button.add_theme_font_size_override("font_size", 10)
 		_style_button(button, false)
+		var icon_content := VBoxContainer.new()
+		icon_content.name = "IconContent"
+		icon_content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon_content.alignment = BoxContainer.ALIGNMENT_CENTER
+		icon_content.add_theme_constant_override("separation", 1)
+		icon_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var icon := TextureRect.new()
+		icon.name = "ActionIcon"
+		icon.texture = ACTION_ICONS[action]
+		icon.custom_minimum_size = Vector2(24, 24)
+		icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var caption_text := "MANAGE" if action == "MANAGEMENT" else action
+		var caption := _label(caption_text, 9, Color(0.91, 0.91, 0.82), true)
+		caption.name = "ActionCaption"
+		caption.tooltip_text = action.capitalize()
+		caption.custom_minimum_size = Vector2(0, 11)
+		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		icon_content.add_child(icon)
+		icon_content.add_child(caption)
+		button.add_child(icon_content)
 		button.pressed.connect(_on_action_pressed.bind(action))
 		action_buttons[action] = button
 		row.add_child(button)
@@ -384,11 +414,10 @@ func _refresh_hud() -> void:
 		var value: Variant = simulation.resources.get(key, 0)
 		var prefix := "$" if key == "money" else ""
 		(resource_labels[key] as Label).text = prefix + str(int(value))
-	day_label.text = "DAY %02d" % simulation.day_number
-	if get_viewport().get_visible_rect().size.x < 620.0:
-		speed_label.text = "ACCELERATED x%.0f" % simulation.game_speed
-	else:
-		speed_label.text = "ACCELERATED  ·  x%.0f" % simulation.game_speed
+	day_label.text = simulation.get_calendar_label()
+	var season_index := clampi(simulation.get_current_season_index(), 0, SEASON_SHORT_NAMES.size() - 1)
+	var season_label: String = str(SEASON_SHORT_NAMES[season_index])
+	speed_label.text = "%s  ·  x%.0f" % [season_label, simulation.game_speed]
 	objective_title.text = simulation.get_phase_title()
 	objective_hint.text = simulation.get_instruction()
 	objective_progress.text = simulation.get_progress_text()
@@ -416,10 +445,7 @@ func _update_action_availability() -> void:
 	var plant: Button = action_buttons.PLANT
 	var shelter_ready: bool = simulation.shelter != null and simulation.shelter.is_complete
 	land.disabled = not shelter_ready or simulation.land_state == LandState.CLEARING
-	land.text = "▧\nLAND"
 	plant.disabled = simulation.land_state != LandState.PREPARED
-	var worker_button: Button = action_buttons.WORKERS
-	worker_button.text = "◎\nWORKERS"
 
 
 func _on_state_changed() -> void:
@@ -568,9 +594,18 @@ func _update_worker_detail_values() -> void:
 func _render_palm_details(palm) -> void:
 	var fertilizer_available: int = int(simulation._available_resource("fertilizer"))
 	var pesticide_available: int = int(simulation._available_resource("pesticide"))
-	var estimated_ffb: int = int(round(palm.fruit_quantity)) if palm.harvest_ready else int(simulation.estimate_ffb_yield(palm))
 	var harvest_reserved: bool = simulation.harvest_reservations.has(palm.id)
-	var signature := "%s|%d|%d|%d|%d|%d|%d|%d|%d|%s" % [
+	var days_to_window: float = CropModel.days_to_next_harvest_window(
+		palm.age, palm.fruit_cycle_days, palm.harvest_count, palm.harvest_ready
+	)
+	var estimate_age := maxf(palm.age, CropModel.FIRST_COMMERCIAL_HARVEST_DAYS)
+	var estimated_ffb := CropModel.estimate_harvest_lot_kg(
+		estimate_age, palm.health, palm.pest_risk, palm.fertilizer
+	)
+	if palm.harvest_ready:
+		estimated_ffb = int(round(palm.fruit_quantity))
+	var next_window_text := "READY · %d kg" % estimated_ffb if palm.harvest_ready else "~%d kg · %.1f mo" % [estimated_ffb, days_to_window / CropModel.DAYS_PER_MONTH]
+	var signature := "%s|%d|%d|%d|%d|%d|%d|%d|%s" % [
 		palm.id,
 		int(palm.growth_stage),
 		int(palm.fruit_state),
@@ -578,8 +613,7 @@ func _render_palm_details(palm) -> void:
 		int(round(palm.health)),
 		int(round(palm.fertilizer)),
 		int(round(palm.pest_risk)),
-		fertilizer_available,
-		pesticide_available,
+		simulation.get_current_season_index(),
 		str(harvest_reserved)
 	]
 	if signature == _last_detail_signature:
@@ -588,20 +622,22 @@ func _render_palm_details(palm) -> void:
 	_clear_detail_rows()
 	details_title.text = "PALM"
 	_add_detail_row("STAGE", palm.stage_name().to_upper())
-	_add_detail_row("AGE", "%.1f game days" % palm.age)
+	_add_detail_row("AGE", "%.1f game years" % CropModel.game_days_to_years(palm.age))
+	if int(palm.growth_stage) < int(PalmData.GrowthStage.MATURE):
+		var next_stage := "YOUNG PALM" if int(palm.growth_stage) == int(PalmData.GrowthStage.SEEDLING) else "MATURE PALM"
+		_add_detail_row("NEXT STAGE", "%s · %d%%" % [next_stage, int(round(palm.growth_to_next_stage() * 100.0))])
 	_add_detail_row("HEALTH", "%.0f%%" % palm.health)
 	_add_detail_row("FRUIT", palm.fruit_state_name())
-	_add_detail_row("ESTIMATED FFB", "%d kg" % estimated_ffb)
+	_add_detail_row("NEXT FFB WINDOW", next_window_text)
 	if palm.last_harvest >= 0.0:
-		_add_detail_row("LAST HARVEST", "Day %d · %d cycle(s)" % [int(floor(palm.last_harvest)) + 1, palm.harvest_count])
+		_add_detail_row("LAST HARVEST", "%s · %d cycle(s)" % [CropModel.calendar_label(palm.last_harvest), palm.harvest_count])
 	_add_detail_row("FERTILIZER", "%.0f%%" % palm.fertilizer)
-	_add_detail_row("PEST RISK", "%.0f%%" % palm.pest_risk)
+	_add_detail_row("PEST INDEX", "%.0f / 100" % palm.pest_risk)
 	if palm.harvest_ready:
 		_add_harvest_button("HARVEST" if not harvest_reserved else "HARVEST ORDERED", palm.id, not harvest_reserved)
-	elif int(palm.growth_stage) == int(PalmData.GrowthStage.MATURE):
-		_add_detail_label("Harvest becomes available when fruit development completes.", Color(0.68, 0.73, 0.63), 10)
 	_add_detail_button("FERTILIZE  ·  5", "FERTILIZE", palm.id, fertilizer_available >= 5)
 	_add_detail_button("TREAT PESTS  ·  2", "TREAT", palm.id, pesticide_available >= 2)
+	_add_detail_label("Accelerated scenario model; timing and input rates are not local prescriptions.", Color(0.68, 0.73, 0.63), 10)
 
 
 func _add_harvest_button(text_value: String, palm_id: String, enabled: bool) -> void:
@@ -752,16 +788,60 @@ func _update_management_values() -> void:
 	_last_detail_signature = signature
 	_clear_detail_rows()
 	details_title.text = "ESTATE OVERVIEW"
-	_add_detail_row("GAME DAY", str(simulation.day_number))
+	_add_detail_row("MODEL CALENDAR", simulation.get_calendar_label())
+	_add_detail_row("SCENARIO PERIOD", simulation.get_current_season_name().capitalize())
 	_add_detail_row("LAND", _land_state_label())
 	_add_detail_row("PALMS", str(simulation.palms.size()))
 	_add_detail_row("WORKER", simulation.worker.state_name().capitalize())
 	_add_detail_row("GAME SPEED", "x%.0f" % simulation.game_speed)
-	_add_detail_label(
-		"Operations: prepare → plant → maintain → harvest → collect FFB → sell.",
-		Color(0.68, 0.73, 0.63),
-		10
+	var cohorts: Array[Dictionary] = simulation.get_cohort_summaries()
+	if cohorts.is_empty():
+		_add_detail_label("Plant seedlings to establish the first crop cohort.", Color(0.68, 0.73, 0.63), 10)
+	else:
+		_add_detail_label("PLANTING COHORTS", Color(0.78, 0.78, 0.58), 10)
+		for cohort in cohorts:
+			_add_detail_label(
+				"%s · %d palms · %.1f game years"
+				% [str(cohort.id), int(cohort.palm_count), float(cohort.average_age_years)],
+				Color(0.90, 0.91, 0.83),
+				11
+			)
+			_add_detail_row(
+				"SEED / YOUNG / MATURE",
+				"%d / %d / %d"
+				% [int(cohort.seedling_count), int(cohort.young_count), int(cohort.mature_count)]
+			)
+			_add_detail_row("AVG HEALTH", "%.0f%%" % float(cohort.average_health_percent))
+			_add_detail_row(
+				"AVG FERTILIZER",
+				"%.0f / 100" % float(cohort.average_fertilizer_reserve)
+			)
+			_add_detail_row("AVG PEST INDEX", "%.0f / 100" % float(cohort.average_pest_index))
+			_add_detail_row(
+				"READY NOW",
+				"%d · %d kg" % [int(cohort.ready_count), int(cohort.ready_kg)]
+			)
+			_add_detail_row(
+				"NEXT 30 MODEL DAYS",
+				"%d · ~%d kg"
+				% [int(cohort.within_model_month_count), int(cohort.within_model_month_kg)]
+			)
+			var earliest_days := float(cohort.earliest_window_days)
+			var earliest_window := "—"
+			if earliest_days >= 0.0:
+				if earliest_days <= 0.000001:
+					earliest_window = "Today"
+				else:
+					earliest_window = "%s · %.1f mo" % [
+						str(cohort.earliest_window_calendar),
+					earliest_days / CropModel.DAYS_PER_MONTH
+					]
+			_add_detail_row("EARLIEST WINDOW", earliest_window)
+	var outlook_note := (
+		"Next 30 model days exclude ready fruit; forecasts use age and modeled drift. "
+		+ "Fertilizer is reserve; pest index is a scenario scale, not an infestation rate."
 	)
+	_add_detail_label(outlook_note, Color(0.68, 0.73, 0.63), 10)
 
 
 func _land_state_label() -> String:

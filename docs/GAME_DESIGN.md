@@ -46,7 +46,7 @@ One local outlet/mill receives finite deliveries, processes bounded throughput, 
 
 ### 7. Finance and business strategy
 
-The player compares capital, operating inputs, labour, logistics, sales, liquidity, and expansion. Every balance change must be auditable in a ledger. The current `$1/kg` sale is strictly a placeholder; no prototype price or yield should be described as a realistic budget.
+The player compares capital, operating inputs, labour, logistics, sales, liquidity, and expansion. Every balance change must be auditable in a ledger. The current `$1/kg` is a prototype fixture value unless explicitly promoted to a sourced market-price assumption; price simulation belongs with the M6 local outlet/market rules. No prototype price or yield should be described as a realistic budget.
 
 ### 8. Stewardship, risk, and community
 
@@ -67,13 +67,14 @@ The present prototype does not yet implement all these steps. In particular it l
 
 ## Accelerated agricultural realism policy
 
-- **Compress elapsed time, preserve ordering.** A playable session can represent years, but a seedling must not appear commercially mature after a few literal in-game days without an explicit compression/scenario label.
+- **Accelerate the clock only; retain the full process graph.** Preserve every operation and its real-world order/dependencies from site screening and nursery through establishment, crop care, reproduction, harvest, loose-fruit recovery, delivery, mill processing, by-product/POME handling, records/sale, and replanting. Work may resolve in block/cohort batches, but inputs, outputs, labour/capacity, costs and consequences must still be represented; batch resolution is not stage omission. Nursery/site planning may overlap; downstream work cannot resolve before prerequisites exist. Label the accelerated calendar. See [`OIL_PALM_OPERATIONS.md`](OIL_PALM_OPERATIONS.md) for the sourced lifecycle and caveats.
+- **Make the acceleration legible.** Show the game calendar and stage durations at the chosen scenario scale; a seedling must not appear commercially mature after a few literal in-game days without an explicit compression/scenario label.
 - **Keep units and calendars explicit.** Display game day/month/year and clarify when a value is per palm, cohort, area, work shift, or delivered tonne.
 - **Use ranges and uncertainty where appropriate.** Do not imply precision beyond the model or source data.
 - **Separate model fact from scenario convenience.** Every parameter carries source, range, uncertainty, and a `factual`, `illustrative`, or `test-only` label in the data/design record.
 - **Preserve meaningful constraints.** Labour, tools/inputs, terrain/route time, processing capacity, cash flow, and stewardship limits must be represented where they change a decision.
 - **Avoid operational advice claims.** The game is entertainment/education, not a substitute for agronomic, legal, financial, or safety guidance.
-- **Review the current prototype numbers.** The 8/45-day stage thresholds, 4/15/20-day fruit thresholds, 180 kg base yield, $1/kg sale, starting inventory, and fixed action costs are test values until reviewed and replaced or kept only in a labeled tutorial fixture.
+- **Review the current crop-model assumptions.** The native Godot path now uses the sourced-and-scenario-labeled accelerated calendar, development stages, seasonal condition rates, and age-based yield curve in [`CROP_MODEL.md`](CROP_MODEL.md). Scenario coefficients still require qualified review. The browser prototype remains separate and may retain older test values. Starting inventory and fixed action costs are prototype values. `$1/kg` is a prototype fixture unless separately sourced and reviewed; market-price simulation remains in M6.
 
 ## Player information and controls
 
@@ -105,7 +106,7 @@ This is intentionally finite: no multiplayer, cloud accounts, player market, inf
 | Finance | Starting cash and a few fixed costs | Auditable operating ledger and bounded expansion choices |
 | Stewardship | None | Visible constraints, indicators, and mitigation choices |
 | Persistence | None | Versioned local save/load |
-| Runtime | Separate browser preview can run; native Godot is unverified | Godot is the production source and acceptance target |
+| Runtime | Separate browser preview; Godot 4.3 headless import, simulation, and structural checks pass; visible rendering/input remain unverified | Godot is the production source and acceptance target |
 
 ## Explicit non-goals and scope control
 

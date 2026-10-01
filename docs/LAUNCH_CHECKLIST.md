@@ -2,7 +2,7 @@
 
 ## Release posture
 
-**Not release-ready.** The audited project is a prototype. M2 First Harvest is current but not COMPLETE; the browser and Godot headless simulation suites pass, while visible native rendering/UI, target-device behavior, persistence, and performance remain UNVERIFIED. Do not use this checklist to imply a launch date or schedule.
+**Not release-ready.** M2 First Harvest is **FUNCTIONALLY IMPLEMENTED / NATIVE ACCEPTANCE IN PROGRESS**, not COMPLETE. Browser evidence includes a 151 kg first harvest, $151 revenue, $1,501 resulting funds, 342 kg delivered from a controlled two-palm block fixture, repeat-harvest readiness, and passing Three.js scene sync. The native GDScript simulation passes 109 assertions and Godot 4.3 project import/parse passes; the headless main-scene structure test passes 110 assertions. The M3 crop-model smoke passes 65 software checks, including eight-year deterministic scenario fixtures, but qualified review and named ownership are pending. Four generic CC0 palm GLBs and eight generic operation GLBs are integrated with provenance and structural checks. The operation subset is static visual dressing only; rendered appearance/mobile cost are unverified and the palms are not species-verified oil-palm art. Native rendered pixels/UI, physical input, target-device behavior, persistence, and performance remain UNVERIFIED. Do not use this checklist to imply a launch date or schedule.
 
 The bounded launch scope is defined in [ROADMAP.md](ROADMAP.md). Godot 4.x is the production target. Android landscape is the proposed first mobile target, but the exact supported OS/device matrix must be accepted and recorded in M0. Browser shipping and iOS are not promised.
 
@@ -27,8 +27,9 @@ Use the status in each line and link a build, test report, review, or signed dec
 ## 2. Milestone and gameplay readiness
 
 - [ ] **BLOCKED** — M0 through M9 are COMPLETE in [ROADMAP.md](ROADMAP.md), with evidence links.
-- [ ] **BLOCKED** — M1 fresh-session establishment flow passes in the native Godot build.
-- [ ] **BLOCKED** — M2 native first harvest → delivery → sale → repeat cycle passes reproducibly; browser evidence is separate.
+- [ ] **BLOCKED** — M1 simulation acceptance passes headlessly, but the complete fresh-session flow through the visible native HUD/touch path has not been accepted.
+- [ ] **BLOCKED** — M2 is FUNCTIONALLY IMPLEMENTED / NATIVE ACCEPTANCE IN PROGRESS: the browser first cycle delivers 151 kg, sells for $151, and leaves $1,501; a controlled two-palm block delivers 342 kg; repeat readiness and browser scene sync pass. Native GDScript simulation passes 109 assertions, including the 36-model-month first-harvest boundary, and Godot import/parse passes, but native rendered pixels, HUD, and physical input remain UNVERIFIED. Browser evidence is separate; do not mark M2 COMPLETE.
+- [ ] **BLOCKED** — M3 has documented scenario-only assumptions and 65 passing software checks, including eight-model-year baseline/limited-input/stress fixtures. A named model owner and qualified agronomic reviewer must still accept the sources, units/ranges, and timing before any values are treated as factual.
 - [ ] **NOT STARTED** — All eight gameplay layers have at least their accepted launch-depth implementation and test coverage.
 - [ ] **NOT STARTED** — No task, inventory, cash, batch, or save exploit duplicates/deletes value in the final regression suite.
 - [ ] **NOT STARTED** — Campaign objectives, time controls, pause behavior, warnings, and recovery paths are complete and understandable.
@@ -37,15 +38,16 @@ Use the status in each line and link a build, test report, review, or signed dec
 
 - [ ] **BLOCKED** — Clean Godot 4.x import passes in a fresh project copy with Godot 4.3, but release export and export settings remain UNVERIFIED; see [QA evidence](QA_PLAN.md).
 - [ ] **NOT STARTED** — Signed release candidate installs and cold-starts on every supported device/OS class.
-- [ ] **BLOCKED** — Main scene, camera, HUD, touch input, app lifecycle, and offline play are not accepted on a shipped build; visible-renderer and target-device validation is unavailable. The headless Dummy-renderer run is insufficient evidence.
+- [ ] **BLOCKED** — Main scene, camera framing, rendered HUD, touch input, app lifecycle, and offline play are not accepted on a shipped build. The headless Dummy diagnostic is classified as a non-fatal backend limitation, but it cannot verify visible rendering; no working display/GPU or target-device validation is available.
 - [ ] **NOT STARTED** — Save/load, app suspend/resume, low storage, and recoverable load failure have been tested.
 - [ ] **NOT STARTED** — Package name/version/icon/splash/permissions and minimum OS settings are reviewed; no unnecessary permission is requested.
 - [ ] **NOT STARTED** — Final install package is at or below the approved package-size budget or an exception is approved.
 
 ## 4. Quality and performance
 
-- [x] **COMPLETE** — Repository-backed Godot simulation tests pass 83 assertions from a clean project copy, and setup/commands are documented in the [README](../README.md) and [QA plan](QA_PLAN.md). This closes simulation-test reproducibility only, not rendered-scene acceptance.
-- [x] **COMPLETE** — Browser evidence is labeled separately and is not substituted for Godot results; see the [QA plan](QA_PLAN.md).
+- [x] **COMPLETE** — Godot simulation tests pass 109 assertions, and the full native runner also passes from a clean archive of the staged tree; setup/commands are documented in the [README](../README.md) and [QA plan](QA_PLAN.md). This closes deterministic test reproducibility only, not rendered-scene or physical-input acceptance.
+- [x] **COMPLETE** — Native main-scene headless structural smoke passes 110 assertions; it checks scene/runtime nodes and scripted flow, not visual rendering or physical input. See the [QA investigation](QA_PLAN.md).
+- [x] **COMPLETE** — Browser evidence is labeled separately and is not substituted for Godot results: the browser first cycle measured 151 kg, $151 revenue, and $1,501 resulting funds; the controlled two-palm block delivered 342 kg; repeat readiness and Three.js scene sync pass. Manual browser rendering/input and native rendering remain separately unverified; see the [QA plan](QA_PLAN.md).
 - [ ] **NOT STARTED** — 30-minute dense-estate profiling on the minimum device meets the accepted frame-time, memory, startup, save/load, input, draw-call, simulation-step, and thermal budgets.
 - [ ] **NOT STARTED** — Worst-case camera, maximum accepted estate state, active task load, and open HUD have been profiled.
 - [ ] **NOT STARTED** — Manual touch, readability, color-independent state cues, reduced-motion/audio-off, and first-time usability checks pass.
@@ -54,7 +56,7 @@ Use the status in each line and link a build, test report, review, or signed dec
 
 ## 5. Content, asset, and licensing readiness
 
-- [ ] **NOT STARTED** — Every launch-path asset has a source, license, attribution, modification record, and mobile redistribution permission.
+- [ ] **IN PROGRESS** — The four curated palm GLBs and eight generic operation GLBs have pinned sources, CC0 notices, checksums, and import/scale records; complete launch-path asset inventory, notice packaging, final review, and visual/device acceptance remain open.
 - [ ] **NOT STARTED** — Required third-party notices, including the vendored Three.js notice if the browser prototype ships, are present in the correct package.
 - [ ] **NOT STARTED** — No missing, debug-only, temporary, or unlicensed asset is visible in the release path.
 - [ ] **NOT STARTED** — App icon, store screenshots, description, and any trailer show the actual shipped Godot game, not the separate browser prototype as though it were the same runtime.
@@ -78,7 +80,7 @@ Use the status in each line and link a build, test report, review, or signed dec
 
 ## Current blocked items
 
-1. Godot 4.3 from the branch-provided archive passes a clean import and 83 native simulation assertions. Headless main-scene launch exits 0 but prints repeated Dummy-renderer `mesh_get_surface_count` errors (also reproduced by a standalone BoxMesh); visible rendering/UI and release export remain UNVERIFIED.
-2. Repository-backed M1/M2 simulation tests pass, but native main-scene integration, UI/input, remaining transition and accounting edge cases, and full milestone acceptance are still open.
-3. No display/GPU or target device is available; save/load, performance profile, release build, and supported OS matrix are also unestablished.
-4. The checked-in browser suite validates only the separate browser prototype; manual browser rendering/input acceptance remains unverified.
+1. The headless mesh diagnostic is classified: Godot 4.3 `--headless` selects the Dummy renderer; the main-scene run logs 264 non-fatal `mesh_get_surface_count` messages and exits 0, and a minimal standalone BoxMesh project reproduces it. No production workaround was applied because this does not establish a visible-renderer defect.
+2. Import, main-scene startup, and 110 structural/runtime smoke assertions pass, but rasterized 3D/UI, camera framing, physical mouse/touch, and visible interaction remain UNVERIFIED. X11/OpenGL software fallback cannot start in this environment.
+3. M2 is FUNCTIONALLY IMPLEMENTED / NATIVE ACCEPTANCE IN PROGRESS. Browser metrics/repeat readiness/scene sync, native GDScript simulation, and Godot import pass; the remaining M2 blocker is visible native main-scene acceptance (rendered pixels, HUD presentation, and physical input) on a usable non-Dummy renderer. No target device, save/load, performance profile, release build/export, or supported OS matrix is established.
+4. The browser suite validates only the separate browser prototype; its ad-hoc Three.js scene-sync smoke passes, but manual browser rendering/input remains unverified and cannot close native acceptance.

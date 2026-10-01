@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records the audited implementation, production direction, performance budgets, and the staged browser-to-Godot transition. It does not authorize new gameplay before the documentation baseline is accepted. The production runtime is Godot 4.x; browser/Three.js validation is separate.
+This document records the audited implementation, production direction, performance budgets, and the staged browser-to-Godot transition. It does not authorize scope outside the user-approved roadmap. The user authorized a curated four-model Nature Kit palm subset and subsequently a small CC0 operation-visual subset; the latter is integrated only as static generic placeholders, with no process/vehicle logic. Neither asset slice changes M2's native rendered/input acceptance or M3's qualified model-review gate. The five existing HUD icons remain. The production runtime is Godot 4.x; browser/Three.js validation is separate.
 
 ## Current repository architecture (audited baseline)
 
@@ -10,12 +10,12 @@ This document records the audited implementation, production direction, performa
 |---|---|
 | Project/runtime | One Godot project (`project.godot`) targeting Godot 4.3 features and the Mobile renderer; one main scene at `scenes/main/main.tscn`. |
 | Coordinator/input | `scripts/main.gd` creates/synchronizes views, maps camera ground clicks to world actions, and connects UI signals to simulation commands. |
-| Simulation | `scripts/simulation/plantation_simulation.gd` owns in-memory resources, accelerated time, growth, task order, worker movement/work, harvest, FFB collection, and fixed-price sales. |
+| Simulation | `scripts/simulation/plantation_simulation.gd` owns in-memory resources, accelerated time, crop growth/condition, month-keyed cohort outlook, task order, worker movement/work, harvest, FFB collection, and fixed-price sales. |
 | Records | `scripts/simulation/*_record.gd` stores worker, palm, task, building, land-zone, and FFB-collection state as non-view data. |
-| World/presentation | `scripts/world/world_builder.gd` and `visual_factory.gd` generate meshes/materials and represent progress; background trees use `MultiMeshInstance3D`. |
+| World/presentation | `scripts/world/world_builder.gd` and `visual_factory.gd` generate procedural meshes/materials and represent progress; background forest uses `MultiMeshInstance3D`, while young/mature palms and three distant landmarks use four curated generic Kenney GLBs. FFB cues remain procedural. |
 | Camera/UI | `scripts/camera/strategy_camera.gd` provides pan/zoom/limited rotation; `scripts/ui/game_ui.gd` creates a responsive CanvasLayer HUD and contextual panels. |
 | Browser preview | `web-preview/js/` separately implements the simulation, Three.js world, UI, and input. It has no runtime link to Godot. Three.js is vendored with its license. |
-| Persistence/tests/build | No save/load, tracked test suite, CI workflow, export preset, or production build pipeline was found. Godot runtime behavior has not been verified. |
+| Persistence/tests/build | No save/load, CI workflow, export preset, or production build pipeline exists. The current working tree contains a repeatable GDScript simulation runner and main-scene structural smoke; Godot 4.3 import/parse, 109 native simulation assertions, 65 crop-model checks, and 110 structural assertions pass headlessly. Visible rendering, physical input, and device behavior remain UNVERIFIED. |
 
 The current boundary between simulation records and visual nodes is a useful starting point, not a claim that the simulation is deterministic, serializable, or production-ready. The current simulation updates through engine `_process(delta)` and uses simplified test values.
 
@@ -40,7 +40,7 @@ Prefer a small, explicit architecture that can be tested without rendering. Avoi
 - Logical outcomes use a fixed ordering, stable IDs, and seeded scenario randomness. Given the same save, seed, command sequence, and model version, a test replay should produce the same state/ledger.
 - Keep actual elapsed/render time separate from game time. Walking/animation may be visual; work duration, growth, seasons, and transaction order are logical simulation rules.
 - Use conservation checks: planting consumes a seedling once; harvest quantity moves palm → worker/field load → collection → outlet → accepted/sold/rejected; cash changes map to ledger rows.
-- `M3` defines realistic-but-accelerated crop and season rules; until then current 8/45-day age thresholds, 4/15/20-day fruit thresholds, 180 kg yield, and `$1/kg` price remain labeled prototype/test values.
+- The native M3 crop slice lives in `scripts/simulation/crop_model.gd` and `docs/CROP_MODEL.md`: it separates the accelerated calendar, age/yield curve, scenario periods, input/condition effects, and per-palm cohort harvest outlook from scene presentation. The outlook distinguishes ready lots from windows due within the next 30 model days. Cited timing references inform the broad curve; numeric condition rates remain scenario assumptions pending qualified review. `$1/kg` remains a prototype fixture unless explicitly promoted to a sourced market-price assumption; market-price simulation belongs to M6.
 
 ## Browser prototype and Godot production transition
 
@@ -77,7 +77,7 @@ Current performance is **UNVERIFIED**. Procedural meshes and MultiMesh use are d
 
 ## Failure handling and risk boundaries
 
-- Missing Godot in the current environment is a validation blocker, not evidence that the project works or is broken.
+- Godot 4.3 headless import, simulation, and structural checks pass in the current environment. The absence of a usable non-Dummy renderer is a visual-acceptance blocker, not evidence that visible project rendering works or is broken.
 - If a native project fails to import or run, record the exact engine version, command, log, and reproduction before changing runtime code.
 - Keep browser failures and Godot failures separate in issues and QA reports.
 - Do not add backend, network, accounts, telemetry, or cloud persistence to solve a local save/validation problem; those are outside launch scope.

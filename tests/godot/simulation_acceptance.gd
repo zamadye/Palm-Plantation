@@ -1,6 +1,7 @@
 extends SceneTree
 
 const PlantationSimulation = preload("res://scripts/simulation/plantation_simulation.gd")
+const CropModel = preload("res://scripts/simulation/crop_model.gd")
 const COMPLETED_STATUS := "COMPLETED"
 const STEP_SECONDS := 0.05
 
@@ -133,7 +134,15 @@ func _test_first_harvest_delivery_sale_and_repeat() -> void:
 		"E2E: first palm is planted",
 	)
 	var palm = simulation.palms[0]
+	var tasks_before_immature_request: int = simulation.tasks.size()
+	var reservations_before_immature_request: int = simulation.harvest_reservations.size()
 	_expect(simulation.request_harvest(palm.id) == false, "immature palm cannot be harvested")
+	_expect(simulation.tasks.size() == tasks_before_immature_request, "non-ready request creates no harvest task")
+	_expect(
+		simulation.harvest_reservations.size() == reservations_before_immature_request,
+		"non-ready request creates no harvest reservation",
+	)
+	_expect(_count_harvest_tasks_for_palm(simulation, palm.id) == 0, "non-ready palm has no harvest task")
 	_expect(simulation.perform_maintenance("FERTILIZE", palm.id), "fertilizing task is accepted")
 	_expect(
 		_advance_until(
@@ -156,9 +165,66 @@ func _test_first_harvest_delivery_sale_and_repeat() -> void:
 		_advance_until(simulation, func() -> bool: return palm.harvest_ready, "first harvest readiness"),
 		"mature palm reaches harvest-ready state",
 	)
-	var expected_kg: int = int(round(palm.fruit_quantity))
+	_expect(
+		palm.age >= CropModel.FIRST_COMMERCIAL_HARVEST_DAYS
+			and palm.age < CropModel.FIRST_COMMERCIAL_HARVEST_DAYS + 0.04,
+		"integrated first harvest opens at the 36-model-month window without early maturity credit",
+	)
+	var expected_kg: int = simulation.estimate_ffb_yield(palm)
+	_expect(expected_kg > 0, "ready palm has a positive computed yield")
+	_expect(
+		int(round(palm.fruit_quantity)) == expected_kg,
+		"captured expected quantity equals the ready palm yield before harvest",
+	)
+	var tasks_before_harvest_request: int = simulation.tasks.size()
+	var reservations_before_harvest_request: int = simulation.harvest_reservations.size()
+	_expect(
+		reservations_before_harvest_request == 0,
+		"fresh first-harvest scenario begins without a reservation",
+	)
 	_expect(simulation.request_harvest(palm.id), "ready palm accepts a harvest task")
-	_expect(simulation.request_harvest(palm.id) == false, "duplicate harvest reservation is rejected")
+	_expect(
+		simulation.tasks.size() == tasks_before_harvest_request + 1,
+		"valid ready-palm request creates exactly one task",
+	)
+	_expect(
+		simulation.harvest_reservations.size() == reservations_before_harvest_request + 1,
+		"valid ready-palm request creates exactly one reservation",
+	)
+	_expect(simulation.harvest_reservations.size() == 1, "exactly one reservation exists for this fresh harvest")
+	_expect(simulation.harvest_reservations.has(palm.id), "ready palm is reserved by the request")
+	_expect(
+		_count_harvest_tasks_for_palm(simulation, palm.id) == 1,
+		"ready palm has exactly one harvest task",
+	)
+	var tasks_after_harvest_request: int = simulation.tasks.size()
+	var reservations_after_harvest_request: int = simulation.harvest_reservations.size()
+	_expect(simulation.request_harvest(palm.id) == false, "duplicate harvest request is rejected")
+	_expect(
+		simulation.tasks.size() == tasks_after_harvest_request,
+		"duplicate request does not increase task count",
+	)
+	_expect(
+		simulation.harvest_reservations.size() == reservations_after_harvest_request,
+		"duplicate request does not increase reservation count",
+	)
+	_expect(
+		_count_harvest_tasks_for_palm(simulation, palm.id) == 1,
+		"duplicate request cannot create another task for the palm",
+	)
+	_expect(simulation.request_harvest(palm.id) == false, "already-reserved palm is rejected")
+	_expect(
+		simulation.tasks.size() == tasks_after_harvest_request,
+		"already-reserved rejection does not increase task count",
+	)
+	_expect(
+		simulation.harvest_reservations.size() == reservations_after_harvest_request,
+		"already-reserved rejection does not increase reservation count",
+	)
+	_expect(
+		_count_harvest_tasks_for_palm(simulation, palm.id) == 1,
+		"no duplicate task exists for the already-reserved palm",
+	)
 	_expect(simulation.resources.harvested_ffb_kg == 0, "FFB is not stored before harvest and delivery")
 	_expect(
 		_advance_until(
@@ -169,6 +235,22 @@ func _test_first_harvest_delivery_sale_and_repeat() -> void:
 		"harvest task completes",
 	)
 	_expect(simulation.worker.carrying_ffb, "completed harvest transfers FFB to the worker")
+	_expect(
+		is_equal_approx(simulation.worker.carried_ffb_kg, float(expected_kg)),
+		"worker carries the exact computed FFB quantity after harvest",
+	)
+	_expect(
+		simulation.harvested_ffb_kg == 0,
+		"collection stock remains zero before delivery",
+	)
+	_expect(
+		simulation.transactions.is_empty() and simulation.latest_transaction.is_empty(),
+		"no quantity is recorded as sold before SELL",
+	)
+	_expect(
+		int(round(palm.fruit_quantity)) == 0,
+		"harvested palm no longer carries the harvested fruit quantity",
+	)
 	_expect(
 		simulation.worker.current_task != null and simulation.worker.current_task.task_type == "FFB_DELIVERY",
 		"delivery follows harvest",
@@ -182,7 +264,19 @@ func _test_first_harvest_delivery_sale_and_repeat() -> void:
 		),
 		"worker deposits the exact harvested quantity",
 	)
-	_expect(simulation.worker.carried_ffb_kg == 0.0, "worker load is empty after delivery")
+	_expect(
+		simulation.harvested_ffb_kg == expected_kg,
+		"collection point contains the exact computed quantity after delivery",
+	)
+	_expect(simulation.worker.carried_ffb_kg == 0.0, "worker load is zero after delivery")
+	_expect(
+		int(round(palm.fruit_quantity)) == 0,
+		"palm remains empty after the harvested quantity reaches collection",
+	)
+	_expect(
+		simulation.transactions.is_empty() and simulation.latest_transaction.is_empty(),
+		"delivered quantity remains unsold until SELL",
+	)
 	var funds_before_sale: int = int(simulation.resources.money)
 	_expect(simulation.sell_ffb(), "stored FFB can be sold")
 	_expect(simulation.harvested_ffb_kg == 0, "sale clears stored FFB once")
@@ -236,6 +330,14 @@ func _has_completed_task(simulation, task_type: String) -> bool:
 		if task.task_type == task_type and task.status_name() == COMPLETED_STATUS:
 			return true
 	return false
+
+
+func _count_harvest_tasks_for_palm(simulation, palm_id: String) -> int:
+	var count := 0
+	for task in simulation.tasks:
+		if task.task_type == "HARVESTING" and str(task.payload.get("palm_id", "")) == palm_id:
+			count += 1
+	return count
 
 
 func _advance_until(simulation, condition: Callable, label: String, max_ticks: int = 60000) -> bool:

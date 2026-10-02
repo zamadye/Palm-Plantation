@@ -16,16 +16,15 @@ Open this folder as a project in **Godot 4.3 or newer** and run `scenes/main/mai
 
 `web-preview/` is a separate browser-side **JavaScript/Three.js implementation** of the compact map and current gameplay loop. It runs in WebGL and mirrors the shelter, clearing, planting, maintenance, fruit development, worker harvest/delivery, FFB collection, and prototype sale systems. It is not imported from or executed by Godot.
 
-This is **not** a converter that imports `.gd` or `.tscn` files. Browsers cannot execute GDScript or Godot scenes directly. Last-Harbord's web version also implements its own JavaScript renderer/game logic; its Python server only serves static files. Palm Plantation's world assets are generated procedurally by Godot scripts, so the web preview recreates those simple shapes in Three.js modules rather than loading Godot resources.
+This is **not** a converter that imports `.gd` or `.tscn` files. Browsers cannot execute GDScript or Godot scenes directly. The web preview remains a separate JavaScript simulation and Three.js renderer, but it now loads the same curated local GLBs from the repository `assets/` directory: four palm models, a tractor and pickup, and six generic industrial-yard models. The five HUD buttons also use the repository SVG icons. A small local GLB loader reads these models and their embedded/external textures; it does not need an online asset service. Forest batches, workers, shelter, crop-state FFB cues, and other gameplay markers remain procedural. Vehicles and mill-yard models are static visual proxies only—not operational machinery or process simulation.
 
-Run from this folder:
+Run from the repository root (so the preview can fetch the shared `assets/` files):
 
 ```sh
-cd web-preview
-python3 -m http.server 8000 --bind 0.0.0.0
+python3 web-preview/serve.py --port 8000
 ```
 
-Then open `http://localhost:8000` in a WebGL 2-capable browser. No Godot, Node.js, build step, or internet-hosted JavaScript library is needed. The local `vendor/three.min.js` file provides the WebGL renderer. Drag to pan, wheel/pinch to zoom, Q/E to rotate, and use the five bottom actions to test the browser preview's prototype loop.
+Then open `http://localhost:8000` in a WebGL 2-capable browser; the helper redirects to the preview and serves both `web-preview/` and the shared `assets/` paths. No Godot, Node.js, build step, or internet-hosted JavaScript library is needed. The local `vendor/three.min.js` file provides the WebGL renderer. Drag to pan, wheel/pinch to zoom, Q/E to rotate, and use the five bottom actions to test the browser preview's prototype loop.
 
 The preview mirrors gameplay behavior but is a separate web implementation, not the exact Godot runtime. Run the native project in Godot 4.3+ to test the source game itself.
 
@@ -34,10 +33,10 @@ The preview mirrors gameplay behavior but is a separate web implementation, not 
 Playing the static browser preview does not require Node.js. To run the separately authored simulation tests (Node.js 22+), use the built-in test runner from the repository root:
 
 ```sh
-node --test web-preview/tests/simulation.test.mjs
+node --test web-preview/tests/*.test.mjs
 ```
 
-These tests cover browser-side simulation logic only; they do not validate Godot, WebGL rendering, or mobile input.
+The five simulation checks and four GLB-asset loader checks cover browser-side logic, model parsing, and mocked scene integration only; they do not validate rendered pixels, real image decoding, external-texture appearance, Godot, or mobile input.
 
 ### Deterministic native acceptance
 

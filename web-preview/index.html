@@ -10,6 +10,9 @@
 <body>
   <canvas id="world" aria-label="Interactive 3D plantation preview"></canvas>
   <div class="vignette" aria-hidden="true"></div>
+  <div id="asset-status" class="asset-status panel" data-state="loading" role="status" aria-live="polite">
+    <i aria-hidden="true"></i><span>3D ASSETS · LOADING</span>
+  </div>
 
   <header class="topbar">
     <section class="brand panel">
@@ -49,11 +52,11 @@
   <div class="hint-chip"><span class="hint-dot"></span> DRAG TO PAN <i></i> SCROLL / PINCH TO ZOOM <i></i> Q / E ROTATE</div>
 
   <nav class="actionbar panel" aria-label="Estate actions">
-    <button class="action" data-action="BUILD"><span>⌂</span><b>BUILD</b><small>SHELTER</small></button>
-    <button class="action" data-action="LAND"><span>▧</span><b>LAND</b><small>CLEAR / GRID</small></button>
-    <button class="action" data-action="PLANT"><span>♧</span><b>PLANT</b><small>SEEDLINGS</small></button>
-    <button class="action" data-action="WORKERS"><span>◎</span><b>WORKERS</b><small>CREW STATUS</small></button>
-    <button class="action" data-action="MANAGEMENT"><span>▤</span><b>MANAGEMENT</b><small>BLOCK REPORT</small></button>
+    <button class="action" data-action="BUILD"><span class="action-icon"><img src="../assets/ui/icons/build.svg" alt=""></span><b>BUILD</b><small>SHELTER</small></button>
+    <button class="action" data-action="LAND"><span class="action-icon"><img src="../assets/ui/icons/land.svg" alt=""></span><b>LAND</b><small>CLEAR / GRID</small></button>
+    <button class="action" data-action="PLANT"><span class="action-icon"><img src="../assets/ui/icons/plant.svg" alt=""></span><b>PLANT</b><small>SEEDLINGS</small></button>
+    <button class="action" data-action="WORKERS"><span class="action-icon"><img src="../assets/ui/icons/workers.svg" alt=""></span><b>WORKERS</b><small>CREW STATUS</small></button>
+    <button class="action" data-action="MANAGEMENT"><span class="action-icon"><img src="../assets/ui/icons/management.svg" alt=""></span><b>MANAGEMENT</b><small>BLOCK REPORT</small></button>
   </nav>
 
   <script src="vendor/three.min.js"></script>

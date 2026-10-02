@@ -1,5 +1,5 @@
 import { PlantationSimulation, LAND } from './simulation.js';
-import { createWorld, syncWorld } from './world.js';
+import { createWorld, loadWorldAssets, syncWorld } from './world.js';
 
 const canvas = document.querySelector('#world');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -32,6 +32,23 @@ function toast(message, kind = 'info') {
 
 const sim = new PlantationSimulation(toast);
 const world = createWorld(scene, sim);
+const assetStatus = document.querySelector('#asset-status');
+function updateAssetStatus(progress) {
+  if (!assetStatus) return;
+  assetStatus.dataset.state = progress.completed >= progress.total ? (progress.failed ? 'partial' : 'ready') : 'loading';
+  const label = progress.failed
+    ? `3D ASSETS · ${progress.loaded}/${progress.total} LOADED`
+    : `3D ASSETS · ${progress.completed >= progress.total ? 'READY' : `${progress.loaded}/${progress.total} LOADING`}`;
+  assetStatus.querySelector('span:last-child').textContent = label;
+}
+loadWorldAssets(world, updateAssetStatus).then(({ loaded, failed, total }) => {
+  if (failed === 0) toast(`Downloaded 3D assets loaded · ${loaded}/${total} models ready in the web preview.`, 'info');
+  else toast(`Some 3D assets did not load · ${loaded}/${total} models available. Check the asset server path.`, 'warning');
+}).catch((error) => {
+  console.error('Web preview could not initialize downloaded 3D assets.', error);
+  updateAssetStatus({ completed: 1, total: 1, loaded: 0, failed: 1 });
+  toast('Downloaded 3D assets are unavailable. Start the preview from the repository root.', 'warning');
+});
 let activeAction = '';
 let selection = null;
 let detailSignature = '';

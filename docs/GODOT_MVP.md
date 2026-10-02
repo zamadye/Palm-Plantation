@@ -5,7 +5,7 @@
 ## Production boundary
 
 - `project.godot`, `scenes/main/main.tscn`, GDScript, and resources under `res://` are the production path.
-- `web-preview/` remains a separately authored prototype and interaction reference. It is not a Godot importer, asset source, or production runtime.
+- `web-preview/` remains a separately authored prototype and interaction reference. It loads the same curated local GLB/SVG visual files, but is not a Godot importer, a source of production simulation state, or a production runtime.
 - Do not claim an MVP pass from the browser version, headless scene graph, or a parse-only result. Native visual/input and target-device evidence are separate gates.
 
 ## MVP vertical-slice target
@@ -19,7 +19,7 @@ The slice keeps the current one-worker/one-block test scale and explicit scenari
 ## Current native foundation
 
 - Godot 4.3 project, Mobile renderer setting, main scene, camera, world builder, simulation, HUD, and first-harvest loop are present.
-- Five original 64 × 64 SVG action icons (`BUILD`, `LAND`, `PLANT`, `WORKERS`, `MANAGEMENT`) are integrated into native Godot buttons with text labels. The browser UI is untouched.
+- Five original 64 × 64 SVG action icons (`BUILD`, `LAND`, `PLANT`, `WORKERS`, `MANAGEMENT`) are integrated into native Godot buttons with text labels and are now shared with the browser HUD. Their use in the prototype does not change native acceptance status.
 - Seedlings, workers, forest batches, shelter, and most field props remain lightweight procedural test visuals. Young/mature palm bodies and three distant palm landmarks use a curated subset of generic Kenney Nature Kit GLBs; FFB bunch cues remain procedural. A separate reviewed CC0 subset adds one generic tractor, one pickup, and a compact static mill-yard visual concept. These are test-art stand-ins, not verified *Elaeis guineensis* models, process-specific equipment, or accepted final art; the mill process chain remains unsimulated.
 - Godot import/parse and structural scripts pass headlessly, including imported palm scenes. Dummy-renderer output does not establish the appearance of any icon, scene, or HUD.
 

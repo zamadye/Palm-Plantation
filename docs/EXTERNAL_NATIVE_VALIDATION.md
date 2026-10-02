@@ -76,7 +76,7 @@ This single command checks the Godot 4.3 version, runs a headless editor import/
 The browser prototype has a separate Node suite; run it independently and report it as browser-only evidence:
 
 ```sh
-node --test web-preview/tests/simulation.test.mjs
+node --test web-preview/tests/*.test.mjs
 ```
 
 ## C. Native startup and graphical run (manual)

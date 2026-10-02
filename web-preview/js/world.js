@@ -1,4 +1,6 @@
-// Lightweight Three.js mirror of the procedural Godot test map.
+// Three.js browser implementation of the compact estate map.
+import { WORLD_ASSET_URLS, loadGLBAsset } from './gltf_assets.js';
+
 const C = THREE.Color;
 const V3 = THREE.Vector3;
 
@@ -64,6 +66,8 @@ function buildForestInstances(scene) {
     if (Math.abs(z) < 2.5) continue;
     if (x > -5 && x < 21 && z > -1 && z < 21) continue;
     if (x > -31 && x < -10 && z > 5 && z < 23.5) continue;
+    if (Math.abs(x - 30) < 9 && Math.abs(z + 14) < 8) continue;
+    if (Math.abs(x - 30) < 3.8 && z <= 1 && z >= -14) continue;
     if (Math.hypot(x - 8, z - 10) < 17) continue;
     if (x < -36 || x > 39 || z < -31 || z > 32) continue;
     positions.push({ x, z, h: 4.5 + rand() * 3.2, s: 1.05 + rand() * .6, t: rand() });
@@ -114,13 +118,63 @@ function buildPalmFronds(length, drop, color) {
   return frond;
 }
 
-function createPalm(stage, fruitState = 'NONE', harvestReady = false) {
+function instantiateAsset(asset, scale = 1) {
+  if (!asset?.scene) return null;
   const root = new THREE.Group();
-  // Exactly three data stages: seedling, young palm, mature palm.
+  const model = asset.scene.clone(true);
+  model.scale.setScalar(scale);
+  model.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  bounds.getSize(size);
+  if (!bounds.isEmpty()) model.position.y -= bounds.min.y;
+  root.add(model);
+  root.userData.sharedAssetResources = true;
+  root.userData.assetSource = asset.url;
+  root.userData.assetHeight = size.y;
+  return root;
+}
+
+function addFruitCues(root, height, fruitState) {
+  if (!['DEVELOPING', 'READY'].includes(fruitState)) return;
+  const ripe = fruitState === 'READY';
+  const fruitColor = ripe ? '#df4b19' : '#a77931';
+  const cues = new THREE.Group();
+  cues.name = 'ProceduralFFBCues';
+  cues.userData.generatedFruitCues = true;
+  for (let i = 0; i < 3; i++) {
+    const angle = Math.PI * 2 * i / 3 + .35;
+    const fruit = sphere(
+      cues, .23,
+      [Math.cos(angle) * .25, -.08 - (i % 2) * .11, Math.sin(angle) * .25],
+      fruitColor, [1, 1.15, .9], 9,
+    );
+    fruit.name = `ProceduralFFBBunch_${i}`;
+    if (ripe) fruit.material.emissive = new C('#862608');
+  }
+  cues.position.y = height * .58;
+  root.add(cues);
+}
+
+function createPalm(stage, fruitState = 'NONE', harvestReady = false, assets = null, variantIndex = 0) {
+  // The web preview uses the same curated GLBs as Godot for established crop stages.
+  const stageIndex = Math.max(0, Math.min(2, stage));
+  const matureKeys = ['palmMature', 'palmStandard', 'palmBent'];
+  const matureScales = [3.7, 3.3, 3.6];
+  const importedKey = stageIndex === 1 ? 'palmYoung' : stageIndex === 2 ? matureKeys[variantIndex % 3] : null;
+  const importedScale = stageIndex === 1 ? 1.8 : matureScales[variantIndex % 3];
+  const importedRoot = importedKey ? instantiateAsset(assets?.[importedKey], importedScale) : null;
+  if (importedRoot) {
+    importedRoot.name = `DownloadedPalm_${importedKey}`;
+    if (stageIndex === 2) addFruitCues(importedRoot, importedRoot.userData.assetHeight, fruitState);
+    return importedRoot;
+  }
+
+  // Keep a procedural seedling/fallback visible while GLBs are still loading or unavailable.
+  const root = new THREE.Group();
   const heights = [.33, .82, 2.8];
   const radii = [.48, .9, 1.95];
   const leaves = [5, 6, 8];
-  const stageIndex = Math.max(0, Math.min(2, stage));
   const h = heights[stageIndex], r = radii[stageIndex];
   cylinder(root, h < .5 ? .055 : h * .065, h < .5 ? .055 : h * .065, h, [0, h / 2, 0], '#765333', 9);
   const crown = new THREE.Group();
@@ -135,18 +189,7 @@ function createPalm(stage, fruitState = 'NONE', harvestReady = false) {
   }
   root.add(crown);
   if (stageIndex === 2 && ['DEVELOPING', 'READY'].includes(fruitState)) {
-    const ripe = fruitState === 'READY';
-    const fruitColor = ripe ? '#df4b19' : '#a77931';
-    for (let i = 0; i < 3; i++) {
-      const angle = Math.PI * 2 * i / 3 + .35;
-      const fruit = sphere(
-        root, .26,
-        [Math.cos(angle) * .28, h * .61 - (i % 2) * .13, Math.sin(angle) * .28],
-        fruitColor, [1, 1.15, .9], 9,
-      );
-      fruit.name = `FruitBunch_${i}`;
-      if (ripe) fruit.material.emissive = new C('#862608');
-    }
+    addFruitCues(root, h, fruitState);
   }
   return root;
 }
@@ -339,6 +382,53 @@ function addCamp(scene) {
   box(truck, [.95, .2, 1.52], [1.55, 1.27, 0], '#394638');
   for (const x of [-1.12, 1.12]) for (const z of [-.9, .9]) cylinder(truck, .39, .39, .22, [x, .39, z], '#292a25', 10, [Math.PI / 2, 0, 0]);
   truck.position.set(-31, 0, -.8); scene.add(truck);
+  return { truck };
+}
+
+function createMillStatusSign(scene) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 768; canvas.height = 192;
+  const context = canvas.getContext('2d');
+  context.fillStyle = 'rgba(32, 45, 34, .96)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = '#d7b56f'; context.lineWidth = 8;
+  context.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
+  context.textAlign = 'center'; context.textBaseline = 'middle';
+  context.fillStyle = '#f1ead2'; context.font = '800 39px sans-serif';
+  context.fillText('LOCAL MILL · VISUAL CONCEPT', canvas.width / 2, 66);
+  context.fillStyle = '#d7b56f'; context.font = '700 29px sans-serif';
+  context.fillText('PROCESS FLOW NOT SIMULATED', canvas.width / 2, 133);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.encoding = THREE.sRGBEncoding;
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+  label.position.set(30, 1.6, -5.5);
+  label.scale.set(9.3, 2.3, 1);
+  scene.add(label);
+  return label;
+}
+
+function addDownloadedModel(parent, asset, name, scale, position, rotationY = 0) {
+  const model = instantiateAsset(asset, scale);
+  if (!model) return null;
+  model.name = `Downloaded_${name}`;
+  model.position.set(position[0], 0, position[1]);
+  model.rotation.y = rotationY;
+  parent.add(model);
+  return model;
+}
+
+function applyPalmPalette(asset) {
+  asset?.scene.traverse((node) => {
+    if (!node.isMesh) return;
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    for (const item of materials) {
+      const label = (item.name || '').toLowerCase();
+      if (label.includes('leaf')) item.color?.set('#4c7130');
+      else if (label.includes('wood') || label.includes('bark')) item.color?.set('#76553a');
+      item.needsUpdate = true;
+    }
+  });
 }
 
 export function createWorld(scene, sim) {
@@ -350,10 +440,22 @@ export function createWorld(scene, sim) {
     const tile = groundPlane(scene, 7.9, 7.9, [x + .1, -.091, z + .1], rand() > .5 ? '#5b6d45' : '#5e7047', .14);
     tile.material.depthWrite = false;
   }
-  // Access road, camp clearing, track, and small pond.
+  // Road, collection/mill access spurs, camp clearing, and small pond.
   groundPlane(scene, 83, 4, [0, -.045, 0], '#7b7057');
   groundPlane(scene, 3.2, 12, [-1.5, -.035, 7.8], '#716a4e');
+  groundPlane(scene, 4.2, 16, [26, -.024, 8], '#716a4e');
+  groundPlane(scene, 3.4, 14, [30, -.024, -7], '#716a4e');
   groundPlane(scene, 21, 15, [-21, -.055, 14], '#68704c');
+  const millYardPad = groundPlane(scene, 16, 14, [30, -.052, -14], '#55594b');
+  const millYardFallback = new THREE.Group();
+  millYardFallback.name = 'GenericMillYardFallback';
+  box(millYardFallback, [5.4, 2.6, 4.5], [0, 1.3, 0], '#62664f');
+  box(millYardFallback, [1.2, 4.3, 1.2], [-4.4, 2.15, -.6], '#59604c');
+  cylinder(millYardFallback, 1.05, 1.05, 2.6, [4.7, 1.3, -.5], '#6b705a', 12);
+  box(millYardFallback, [3.4, 1.2, 1.2], [0, .6, 4.2], '#656a54');
+  millYardFallback.position.set(30, 0, -14);
+  scene.add(millYardFallback);
+  const millStatusSign = createMillStatusSign(scene);
   const pond = groundPlane(scene, 9, 5.5, [29, -.025, -25], '#315e5e'); pond.scale.set(1, 1, 1);
   const pondRim = groundPlane(scene, 10, 6.5, [29, -.04, -25], '#6f7654', .7); pondRim.material.depthWrite = false;
   // Survey field border and corner stakes.
@@ -401,16 +503,86 @@ export function createWorld(scene, sim) {
     root.position.set(slot.x, 0, slot.z); root.visible = false; scene.add(root); return { root, disc, slot };
   });
   // Temporary camp and player/worker silhouettes.
-  addCamp(scene);
+  const camp = addCamp(scene);
   const player = createPerson(true); player.position.set(sim.player.x, 0, sim.player.z); scene.add(player);
   const worker = createPerson(false); worker.position.set(sim.worker.x, 0, sim.worker.z); scene.add(worker);
   const shelter = createShelter();
   scene.add(shelter.root); shelter.root.visible = false;
   const collection = createCollectionPoint(scene, sim.collectionPoint);
   const palmViews = new Map();
+  const downloadedPalms = new THREE.Group();
+  downloadedPalms.name = 'DownloadedPalmLandmarks';
+  scene.add(downloadedPalms);
+  const downloadedOperations = new THREE.Group();
+  downloadedOperations.name = 'DownloadedOperationVisuals';
+  scene.add(downloadedOperations);
   const selection = createSelectionMarker(field);
   scene.add(selection.root);
-  return { scene, clearingTrees, soil, markers, rowGuides, player, worker, shelter, collection, palmViews, field, stakes, selection };
+  return {
+    scene, clearingTrees, soil, markers, rowGuides, player, worker, shelter, collection,
+    palmViews, field, stakes, selection, camp, millYardPad, millYardFallback, millStatusSign,
+    downloadedPalms, downloadedOperations, assetModels: {}, assetVersion: 0,
+  };
+}
+
+export async function loadWorldAssets(world, onProgress = () => {}) {
+  const entries = Object.entries(WORLD_ASSET_URLS);
+  let completed = 0;
+  let loaded = 0;
+  let failed = 0;
+  onProgress({ completed, total: entries.length, loaded, failed });
+  await Promise.all(entries.map(async ([key, url]) => {
+    try {
+      const asset = await loadGLBAsset(url);
+      world.assetModels[key] = asset;
+      if (key.startsWith('palm')) applyPalmPalette(asset);
+      loaded += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(`Downloaded 3D asset failed to load (${key}).`, error);
+    } finally {
+      completed += 1;
+      onProgress({ completed, total: entries.length, loaded, failed });
+    }
+  }));
+
+  world.assetVersion += 1;
+  const landmarks = [
+    { key: 'palmMature', scale: 3.7 * .86, position: [-35, -24] },
+    { key: 'palmStandard', scale: 3.3 * .86, position: [31, -26] },
+    { key: 'palmBent', scale: 3.6 * .86, position: [35, 22] },
+  ];
+  for (const landmark of landmarks) {
+    addDownloadedModel(
+      world.downloadedPalms,
+      world.assetModels[landmark.key],
+      landmark.key,
+      landmark.scale,
+      landmark.position,
+    );
+  }
+
+  addDownloadedModel(world.downloadedOperations, world.assetModels.tractor, 'tractor', 1.6, [19.6, 13.4], Math.PI * .5);
+  addDownloadedModel(world.downloadedOperations, world.assetModels.truck, 'truck', 1.6, [26, 13.8], Math.PI);
+
+  const yardKeys = ['millBuilding', 'millChimney', 'millTank', 'millConveyor', 'millHopper', 'millPipe'];
+  const completeYard = yardKeys.every((key) => world.assetModels[key]);
+  world.millYardFallback.visible = !completeYard;
+  if (completeYard) {
+    const yardModels = [
+      ['millBuilding', 'building-c', 3.0, [30, -14], 0],
+      ['millChimney', 'chimney-large', 2.2, [25.8, -14.6], 0],
+      ['millTank', 'detail-tank-large', 2.2, [34.9, -14.6], 0],
+      ['millHopper', 'hopper-high-round', 2.1, [25.8, -9.9], 0],
+      ['millConveyor', 'conveyor-v1', 2.0, [30, -9.3], 0],
+      ['millPipe', 'pipe-large-valve', 2.0, [34.9, -10.8], 0],
+    ];
+    for (const [key, name, scale, position, rotation] of yardModels) {
+      addDownloadedModel(world.downloadedOperations, world.assetModels[key], name, scale, position, rotation);
+    }
+  }
+  world.camp.truck.visible = !world.assetModels.truck;
+  return { loaded, failed, total: entries.length };
 }
 
 export function syncWorld(world, sim, clock, selected = null) {
@@ -442,17 +614,26 @@ export function syncWorld(world, sim, clock, selected = null) {
     const fruitState = palm.fruit_state ?? 'NONE';
     if (
       !existing || existing.stage !== palm.growth_stage || existing.fruitState !== fruitState
-      || existing.harvestReady !== Boolean(palm.harvest_ready)
+      || existing.harvestReady !== Boolean(palm.harvest_ready) || existing.assetVersion !== world.assetVersion
     ) {
       if (existing) {
         world.scene.remove(existing.root);
-        disposeObjectTree(existing.root);
+        if (existing.root.userData.sharedAssetResources) {
+          for (const child of existing.root.children) {
+            if (child.userData.generatedFruitCues) disposeObjectTree(child);
+          }
+        } else {
+          disposeObjectTree(existing.root);
+        }
       }
-      const root = createPalm(palm.growth_stage, fruitState, Boolean(palm.harvest_ready));
+      const root = createPalm(
+        palm.growth_stage, fruitState, Boolean(palm.harvest_ready), world.assetModels, palm.slot_index ?? 0,
+      );
       root.position.set(palm.position.x, 0, palm.position.z);
       root.userData.palmId = palm.id;
       world.palmViews.set(palm.id, {
         root, stage: palm.growth_stage, fruitState, harvestReady: Boolean(palm.harvest_ready),
+        assetVersion: world.assetVersion,
       });
       world.scene.add(root);
     }

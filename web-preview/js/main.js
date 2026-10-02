@@ -12,11 +12,11 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color('#72836b');
 scene.fog = new THREE.Fog('#72836b', 115, 195);
 const camera = new THREE.PerspectiveCamera(43, window.innerWidth / window.innerHeight, .1, 260);
-scene.add(new THREE.HemisphereLight('#e6e5ce', '#424d38', 1.55));
-const sun = new THREE.DirectionalLight('#fff0cc', 2.1);
+scene.add(new THREE.HemisphereLight('#e6e5ce', '#424d38', 1.1));
+const sun = new THREE.DirectionalLight('#fff0cc', 1.45);
 sun.position.set(-32, 58, 24);
 scene.add(sun);
-const fill = new THREE.DirectionalLight('#a8bda0', .58);
+const fill = new THREE.DirectionalLight('#a8bda0', .42);
 fill.position.set(30, 25, -30);
 scene.add(fill);
 

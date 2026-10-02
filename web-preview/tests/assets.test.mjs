@@ -10,6 +10,23 @@ const require = createRequire(import.meta.url);
 const THREE = require('../vendor/three.min.js');
 const assetEntries = Object.entries(WORLD_ASSET_URLS);
 
+test('the preview references five existing, well-formed shared action icon SVGs', async () => {
+  const pageUrl = new URL('../index.html', import.meta.url);
+  const html = await readFile(fileURLToPath(pageUrl), 'utf8');
+  const references = [...html.matchAll(/<span class="action-icon"><img\s+src="([^"]+)"/g)]
+    .map((match) => match[1]);
+  const names = references.map((reference) => new URL(reference, pageUrl).pathname.split('/').at(-1)).sort();
+  assert.deepEqual(names, ['build.svg', 'land.svg', 'management.svg', 'plant.svg', 'workers.svg']);
+
+  for (const reference of references) {
+    const iconUrl = new URL(reference, pageUrl);
+    const svg = await readFile(fileURLToPath(iconUrl), 'utf8');
+    assert.match(svg, /<svg\b[^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/i, `${iconUrl.pathname} is an SVG asset`);
+    assert.match(svg, /viewBox="0 0 64 64"/, `${iconUrl.pathname} has the expected 64 by 64 viewBox`);
+    assert.match(svg, /<path\b/, `${iconUrl.pathname} contains visible vector paths`);
+  }
+});
+
 test('browser catalog points at all twelve shared palm and operation GLBs', () => {
   assert.equal(assetEntries.length, 12);
   assert.equal(assetEntries.filter(([key]) => key.startsWith('palm')).length, 4);

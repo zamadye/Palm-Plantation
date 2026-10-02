@@ -24,7 +24,7 @@ Run from the repository root (so the preview can fetch the shared `assets/` file
 python3 web-preview/serve.py --port 8000
 ```
 
-Then open `http://localhost:8000` in a WebGL 2-capable browser; the helper redirects to the preview and serves both `web-preview/` and the shared `assets/` paths. No Godot, Node.js, build step, or internet-hosted JavaScript library is needed. The local `vendor/three.min.js` file provides the WebGL renderer. Drag to pan, wheel/pinch to zoom, Q/E to rotate, and use the five bottom actions to test the browser preview's prototype loop.
+Then open `http://localhost:8000` in a WebGL 2-capable browser; the helper serves the app at `/`, maps its static files from `web-preview/`, and exposes the shared files at `/assets/`. The app also works at `/web-preview/` when the repository root is served directly. No Godot, Node.js, build step, or internet-hosted JavaScript library is needed. The local `vendor/three.min.js` file provides the WebGL renderer. Drag to pan, wheel/pinch to zoom, Q/E to rotate, and use the five bottom actions to test the browser preview's prototype loop.
 
 The preview mirrors gameplay behavior but is a separate web implementation, not the exact Godot runtime. Run the native project in Godot 4.3+ to test the source game itself.
 

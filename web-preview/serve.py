@@ -1,41 +1,50 @@
 #!/usr/bin/env python3
-"""Serve the browser preview and shared repository assets from one root."""
+"""Serve the browser preview at / and expose the shared repository assets."""
 
 from __future__ import annotations
 
 import argparse
-from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+WEB_ROOT = REPOSITORY_ROOT / "web-preview"
+ASSET_ROOT = REPOSITORY_ROOT / "assets"
+
+
+def safe_path(root: Path, relative: str) -> str:
+    candidate = (root / relative).resolve()
+    try:
+        candidate.relative_to(root.resolve())
+    except ValueError:
+        return str(root / "__not_found__")
+    return str(candidate)
 
 
 class PreviewHandler(SimpleHTTPRequestHandler):
-    def do_GET(self) -> None:
-        request_path = urlsplit(self.path).path
-        if request_path in {"", "/"}:
-            self.send_response(302)
-            self.send_header("Location", "/web-preview/")
-            self.end_headers()
-            return
-        if request_path == "/web-preview":
-            self.send_response(301)
-            self.send_header("Location", "/web-preview/")
-            self.end_headers()
-            return
-        super().do_GET()
+    def translate_path(self, request_path: str) -> str:
+        path = unquote(urlsplit(request_path).path)
+        if path in {"", "/"}:
+            return str(WEB_ROOT / "index.html")
+        if path == "/assets":
+            return str(ASSET_ROOT)
+        if path.startswith("/assets/"):
+            return safe_path(ASSET_ROOT, path.removeprefix("/assets/"))
+        if path == "/web-preview":
+            return str(WEB_ROOT)
+        if path.startswith("/web-preview/"):
+            return safe_path(WEB_ROOT, path.removeprefix("/web-preview/"))
+        return safe_path(WEB_ROOT, path.lstrip("/"))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    handler = partial(PreviewHandler, directory=str(REPOSITORY_ROOT))
-    server = ThreadingHTTPServer(("0.0.0.0", args.port), handler)
-    print(f"Palm Plantation web preview: http://0.0.0.0:{args.port}/web-preview/", flush=True)
+    server = ThreadingHTTPServer(("0.0.0.0", args.port), PreviewHandler)
+    print(f"Palm Plantation web preview: http://0.0.0.0:{args.port}/", flush=True)
     server.serve_forever()
 
 
